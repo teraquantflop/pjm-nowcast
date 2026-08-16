@@ -1,0 +1,370 @@
+"""ASGI payment gate: 402 before body/schema validation on paid routes.
+
+Official x402 PaymentMiddlewareASGI is used when the SDK is importable and
+payments are not disabled. A local stub still emits 402 + PAYMENT-REQUIRED so
+tests and the free probe work without hitting a facilitator.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import json
+import logging
+from datetime import datetime, timezone
+from typing import Any, Callable
+
+from starlette.types import ASGIApp, Receive, Scope, Send
+
+from pjm_nowcast import DISCLAIMER
+from pjm_nowcast.db.store import Store
+from pjm_nowcast.payments.client_ip import client_ip
+from pjm_nowcast.payments.rate_limit import TokenBucket
+from pjm_nowcast.payments.routes import (
+    FREE_TIER_ELIGIBLE,
+    PAID_ROUTES,
+    match_paid_path,
+    price_for,
+)
+from pjm_nowcast.settings import Settings
+
+log = logging.getLogger("pjm_nowcast.payments")
+
+PAYMENT_HEADERS = (
+    "payment-signature",
+    "x-payment",
+    "x-payment-signature",
+)
+
+
+class PaymentGateMiddleware:
+    def __init__(self, app: ASGIApp, settings: Settings, store: Store) -> None:
+        self.app = app
+        self.settings = settings
+        self.store = store
+        self.bucket = TokenBucket(settings.rate_limit_rps, settings.rate_limit_burst)
+        self._x402_app: ASGIApp | None = None
+        if not settings.x402_disabled:
+            self._x402_app = _try_wrap_x402(app, settings)
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        path = scope.get("path", "")
+        method = scope.get("method", "GET").upper()
+        headers = _header_map(scope)
+
+        ip = client_ip(
+            headers,
+            self.settings,
+            fallback=_peer_host(scope),
+        )
+        if not self.bucket.allow(ip):
+            await _send_json(send, 429, {"error": "rate_limited", "message": "Too many requests."})
+            return
+
+        paid = match_paid_path(path) if method == "POST" else None
+        if paid is None:
+            await self.app(scope, receive, send)
+            return
+
+        # Idempotency short-circuit (cached successful response)
+        idem = headers.get("idempotency-key")
+        body = await _read_body(receive)
+        replay = _replay_receive(body)
+
+        if idem:
+            row = self.store.get_idempotency(idem, paid)
+            req_hash = _body_hash(body)
+            if row is not None:
+                if str(row["request_hash"]) != req_hash:
+                    await _send_json(
+                        send,
+                        409,
+                        {
+                            "error": "idempotency_conflict",
+                            "message": "Idempotency-Key was reused with a different body.",
+                            "disclaimer": DISCLAIMER,
+                        },
+                    )
+                    return
+                if row["status_code"] and row["response_json"]:
+                    await _send_raw(
+                        send,
+                        int(row["status_code"]),
+                        row["response_json"].encode("utf-8"),
+                        content_type="application/json",
+                    )
+                    return
+
+        if self.settings.x402_disabled:
+            await self.app(scope, replay, send)
+            return
+
+        # Free-tier (L1 only)
+        if (
+            paid in FREE_TIER_ELIGIBLE
+            and self.settings.free_tier_n > 0
+            and not _has_payment(headers)
+        ):
+            window = _window_start(self.settings.free_tier_window_seconds)
+            bucket = hashlib.sha256(
+                f"{self.settings.free_tier_salt}:{ip}".encode()
+            ).hexdigest()
+            if self.store.consume_free_tier(bucket, window, self.settings.free_tier_n):
+                await self.app(scope, replay, send)
+                return
+
+        if not _has_payment(headers):
+            await _send_402(send, self.settings, paid)
+            return
+
+        # Capture response for idempotency store
+        if idem:
+            status_box: dict[str, Any] = {}
+            chunks: list[bytes] = []
+
+            async def capturing_send(message: dict[str, Any]) -> None:
+                if message["type"] == "http.response.start":
+                    status_box["status"] = message["status"]
+                    await send(message)
+                elif message["type"] == "http.response.body":
+                    chunks.append(message.get("body") or b"")
+                    await send(message)
+                    if not message.get("more_body", False):
+                        code = int(status_box.get("status") or 200)
+                        if 200 <= code < 300:
+                            self.store.put_idempotency(
+                                idem,
+                                paid,
+                                _body_hash(body),
+                                code,
+                                b"".join(chunks).decode("utf-8", errors="replace"),
+                                datetime.now(timezone.utc),
+                            )
+
+            target = self._x402_app or self.app
+            await target(scope, replay, capturing_send)
+            return
+
+        target = self._x402_app or self.app
+        await target(scope, replay, send)
+
+
+def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
+    """Best-effort official middleware. Failure leaves stub 402 in place."""
+    try:
+        from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
+        from x402.http.middleware.fastapi import PaymentMiddlewareASGI
+        from x402.http.types import RouteConfig
+        from x402.mechanisms.evm.exact import ExactEvmServerScheme
+        from x402.mechanisms.svm.exact import ExactSvmServerScheme
+        from x402.server import x402ResourceServer
+    except Exception as exc:
+        log.warning("x402 SDK not available (%s); using local 402 stub", exc)
+        return None
+
+    try:
+        auth = None
+        if settings.payai_api_key_id and settings.payai_api_key_secret:
+            from pjm_nowcast.payments.payai_auth import PayAIAuthProvider
+
+            auth = PayAIAuthProvider(
+                settings.payai_api_key_id, settings.payai_api_key_secret
+            )
+        facilitator = HTTPFacilitatorClient(
+            FacilitatorConfig(url=settings.facilitator_url, auth_provider=auth)
+            if auth
+            else FacilitatorConfig(url=settings.facilitator_url)
+        )
+        server = x402ResourceServer(facilitator)
+        evm_net = "eip155:8453"
+        svm_net = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+        if evm_net in settings.network_list and settings.evm_pay_to:
+            server.register(evm_net, ExactEvmServerScheme())
+        if svm_net in settings.network_list and settings.svm_pay_to:
+            server.register(svm_net, ExactSvmServerScheme())
+
+        routes: dict[str, Any] = {}
+        for path, _tier in PAID_ROUTES.items():
+            accepts = []
+            price = price_for(path, settings)
+            if settings.evm_pay_to and evm_net in settings.network_list:
+                accepts.append(
+                    PaymentOption(
+                        scheme="exact",
+                        pay_to=settings.evm_pay_to,
+                        price=price,
+                        network=evm_net,
+                    )
+                )
+            if settings.svm_pay_to and svm_net in settings.network_list:
+                accepts.append(
+                    PaymentOption(
+                        scheme="exact",
+                        pay_to=settings.svm_pay_to,
+                        price=price,
+                        network=svm_net,
+                    )
+                )
+            if not accepts:
+                continue
+            desc = {
+                "/v1/nowcast/latest": "Latest descriptive snapshot of RTO LMP, zonal spreads, and RTO load.",
+                "/v1/nowcast/history": "1–72h descriptive history of RTO LMP, zonal spreads, and RTO load.",
+                "/v1/nowcast/history/extended": "Extended descriptive history within the retention window.",
+            }[path]
+            routes[f"POST {path}"] = RouteConfig(
+                accepts=accepts,
+                mime_type="application/json",
+                description=desc,
+                service_name="pjm-nowcast",
+                tags=["pjm", "lmp", "load", "spread", "electricity"],
+                resource=f"{settings.public_base_url.rstrip('/')}{path}",
+            )
+        if not routes:
+            return None
+        return PaymentMiddlewareASGI(app, routes=routes, server=server)
+    except Exception as exc:
+        log.warning("x402 middleware setup failed (%s); using local 402 stub", exc)
+        return None
+
+
+def payment_required_payload(settings: Settings, path: str) -> dict[str, Any]:
+    accepts = []
+    price = price_for(path, settings)
+    if settings.evm_pay_to:
+        accepts.append(
+            {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "payTo": settings.evm_pay_to,
+                "price": price,
+                "asset": "USDC",
+            }
+        )
+    if settings.svm_pay_to:
+        accepts.append(
+            {
+                "scheme": "exact",
+                "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                "payTo": settings.svm_pay_to,
+                "price": price,
+                "asset": "USDC",
+            }
+        )
+    if not accepts:
+        # Still advertise so unpaid clients get a 402, not a 400.
+        accepts.append(
+            {
+                "scheme": "exact",
+                "network": "eip155:8453",
+                "payTo": "0x0000000000000000000000000000000000000000",
+                "price": price,
+                "asset": "USDC",
+            }
+        )
+    return {
+        "x402Version": 2,
+        "error": "Payment required",
+        "resource": f"{settings.public_base_url.rstrip('/')}{path}",
+        "accepts": accepts,
+        "disclaimer": DISCLAIMER,
+    }
+
+
+async def _send_402(send: Send, settings: Settings, path: str) -> None:
+    payload = payment_required_payload(settings, path)
+    encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
+    body = b"{}"
+    await send(
+        {
+            "type": "http.response.start",
+            "status": 402,
+            "headers": [
+                (b"content-type", b"application/json; charset=utf-8"),
+                (b"payment-required", encoded.encode("ascii")),
+                (b"cache-control", b"no-store"),
+            ],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
+async def _send_json(send: Send, status: int, payload: dict[str, Any]) -> None:
+    raw = json.dumps(payload).encode("utf-8")
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [(b"content-type", b"application/json; charset=utf-8")],
+        }
+    )
+    await send({"type": "http.response.body", "body": raw})
+
+
+async def _send_raw(send: Send, status: int, body: bytes, content_type: str) -> None:
+    await send(
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [(b"content-type", content_type.encode("ascii"))],
+        }
+    )
+    await send({"type": "http.response.body", "body": body})
+
+
+def _header_map(scope: Scope) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for k, v in scope.get("headers") or []:
+        out[k.decode("latin1").lower()] = v.decode("latin1")
+    return out
+
+
+def _has_payment(headers: dict[str, str]) -> bool:
+    return any(headers.get(h) for h in PAYMENT_HEADERS)
+
+
+def _peer_host(scope: Scope) -> str:
+    client = scope.get("client")
+    if client and client[0]:
+        return str(client[0])
+    return "127.0.0.1"
+
+
+async def _read_body(receive: Receive) -> bytes:
+    chunks: list[bytes] = []
+    while True:
+        message = await receive()
+        if message["type"] != "http.request":
+            break
+        chunks.append(message.get("body") or b"")
+        if not message.get("more_body"):
+            break
+    return b"".join(chunks)
+
+
+def _replay_receive(body: bytes) -> Receive:
+    sent = False
+
+    async def receive() -> dict[str, Any]:
+        nonlocal sent
+        if sent:
+            return {"type": "http.disconnect"}
+        sent = True
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    return receive
+
+
+def _body_hash(body: bytes) -> str:
+    return hashlib.sha256(body or b"").hexdigest()
+
+
+def _window_start(window_seconds: int) -> datetime:
+    now = datetime.now(timezone.utc)
+    epoch = int(now.timestamp())
+    start = epoch - (epoch % max(window_seconds, 1))
+    return datetime.fromtimestamp(start, tz=timezone.utc)

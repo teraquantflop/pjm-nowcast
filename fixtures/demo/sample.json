@@ -1,0 +1,61 @@
+{
+  "product": "pjm-nowcast",
+  "disclaimer": "Descriptive statistics only. Not a forecast, signal, or trading recommendation. Aggregated from public market sources. Freshness depends on the last successful background poll.",
+  "timezone": "America/New_York",
+  "asOf": "2026-08-01T16:00:00-04:00",
+  "polledAt": "2026-08-01T16:00:12-04:00",
+  "ageSeconds": 0,
+  "maxAgeSeconds": 10800,
+  "stale": false,
+  "observationCount": 24,
+  "rtoLmp": {
+    "unit": "USD/MWh",
+    "n": 24,
+    "last": 32.5,
+    "min": 21.1,
+    "max": 48.0,
+    "mean": 30.4,
+    "std": 6.2,
+    "p05": 22.0,
+    "p50": 29.8,
+    "p95": 45.1
+  },
+  "zonalSpread": {
+    "unit": "USD/MWh",
+    "n": 24,
+    "last": 8.4,
+    "min": 2.1,
+    "max": 14.0,
+    "mean": 6.5,
+    "std": 2.8,
+    "p05": 2.4,
+    "p50": 6.1,
+    "p95": 12.8,
+    "lastSpread": 8.4,
+    "lastP05": 27.1,
+    "lastP95": 35.5,
+    "zones": {
+      "BGE": 34.2,
+      "COMED": 27.1,
+      "DOM": 33.0,
+      "PEPCO": 35.5,
+      "PSEG": 32.8,
+      "JCPL": 31.9
+    }
+  },
+  "rtoLoad": {
+    "unit": "MW",
+    "n": 24,
+    "last": 112400,
+    "min": 89000,
+    "max": 118200,
+    "mean": 104500,
+    "std": 8200,
+    "p05": 90500,
+    "p50": 105000,
+    "p95": 117000,
+    "sourcePublishedPeakTodayMw": 121000,
+    "sourcePublishedPeakTomorrowMw": 118500,
+    "vsPublishedPeakTodayMw": 8600
+  }
+}
