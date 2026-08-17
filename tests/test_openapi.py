@@ -60,6 +60,10 @@ def test_only_three_paid_nowcast_posts_have_payment_docs(client):
             assert acc["maxTimeoutSeconds"] == 60
             assert acc["price"] == info["price"]
             assert acc["scheme"] == "exact"
+            if acc["network"] == "eip155:8453":
+                assert acc["asset"] == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                assert acc["extra"]["name"] == "USD Coin"
+                assert acc["extra"]["version"] == "2"
 
 
 def test_mcp_not_in_openapi(client):

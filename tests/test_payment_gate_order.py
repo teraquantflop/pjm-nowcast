@@ -66,13 +66,17 @@ def test_empty_json_object_is_402_with_atomic_amounts(enforcing_client):
         assert challenge["resource"].get("description")
         for acc in challenge["accepts"]:
             assert acc["scheme"] == "exact"
-            assert acc["asset"] == "USDC"
             assert acc["amount"] == atomic
             assert acc["maxAmountRequired"] == atomic
             assert acc["maxTimeoutSeconds"] == 60
             assert acc["price"] == prices[path]
             assert acc["network"]
             assert acc["payTo"]
+            if acc["network"] == "eip155:8453":
+                assert acc["asset"] == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+                assert acc["extra"] == {"name": "USD Coin", "version": "2"}
+            else:
+                assert acc["asset"] == "USDC"
 
 
 def test_garbage_body_unpaid_is_402(enforcing_client):

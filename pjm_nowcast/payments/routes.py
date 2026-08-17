@@ -31,6 +31,11 @@ PAID_DESCRIPTIONS: dict[str, str] = {
 USDC_DECIMALS = 6
 CHALLENGE_TIMEOUT_SECONDS = 60
 
+# Base mainnet USDC (EIP-3009). Required by @x402/evm EIP-712 domain params.
+BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
+BASE_USDC_EIP712_EXTRA = {"name": "USD Coin", "version": "2"}
+BASE_NETWORK = "eip155:8453"
+
 
 def resource_url(settings: Settings, path: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}{path}"

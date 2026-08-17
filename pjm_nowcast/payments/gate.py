@@ -21,6 +21,9 @@ from pjm_nowcast.db.store import Store
 from pjm_nowcast.payments.client_ip import client_ip
 from pjm_nowcast.payments.rate_limit import TokenBucket
 from pjm_nowcast.payments.routes import (
+    BASE_NETWORK,
+    BASE_USDC_ADDRESS,
+    BASE_USDC_EIP712_EXTRA,
     CHALLENGE_TIMEOUT_SECONDS,
     FREE_TIER_ELIGIBLE,
     PAID_DESCRIPTIONS,
@@ -228,7 +231,7 @@ def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
 
 def _accept_entry(*, network: str, pay_to: str, price: str) -> dict[str, Any]:
     atomic = usdc_atomic_amount(price)
-    return {
+    entry: dict[str, Any] = {
         "scheme": "exact",
         "network": network,
         "payTo": pay_to,
@@ -238,6 +241,11 @@ def _accept_entry(*, network: str, pay_to: str, price: str) -> dict[str, Any]:
         "maxAmountRequired": atomic,
         "maxTimeoutSeconds": CHALLENGE_TIMEOUT_SECONDS,
     }
+    if network == BASE_NETWORK:
+        # @x402/evm needs the contract + EIP-712 domain, not the ticker string.
+        entry["asset"] = BASE_USDC_ADDRESS
+        entry["extra"] = dict(BASE_USDC_EIP712_EXTRA)
+    return entry
 
 
 def payment_required_payload(settings: Settings, path: str) -> dict[str, Any]:
