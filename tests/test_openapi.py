@@ -49,6 +49,13 @@ def test_only_three_paid_nowcast_posts_have_payment_docs(client):
         assert info["price"] == price_for(path, client.app.state.settings)
         assert info["facilitator"] == client.app.state.settings.facilitator_url
         assert info["networks"] == client.app.state.settings.network_list
+        from pjm_nowcast.payments.routes import usdc_atomic_amount
+
+        atomic = usdc_atomic_amount(info["price"])
+        for acc in info["accepts"]:
+            assert acc["amount"] == atomic
+            assert acc["maxAmountRequired"] == atomic
+            assert acc["price"] == info["price"]
 
 
 def test_mcp_not_in_openapi(client):

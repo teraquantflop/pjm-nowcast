@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from decimal import Decimal, ROUND_HALF_UP
+
 from pjm_nowcast.settings import Settings
 
 PAID_ROUTES: dict[str, str] = {
@@ -11,6 +13,10 @@ PAID_ROUTES: dict[str, str] = {
 }
 
 FREE_TIER_ELIGIBLE = {"/v1/nowcast/latest"}
+
+# USDC has 6 decimals. Dollar prices are unchanged; these are the atomic strings
+# scanners need: $0.02 → "20000", $0.10 → "100000", $0.25 → "250000".
+USDC_DECIMALS = 6
 
 
 def price_for(path: str, settings: Settings) -> str:
@@ -22,6 +28,17 @@ def price_for(path: str, settings: Settings) -> str:
     if tier == "l3":
         return settings.price_l3
     return "$0.00"
+
+
+def usdc_atomic_amount(price: str) -> str:
+    """Convert a dollar price like '$0.02' to a USDC atomic-unit string."""
+    raw = (price or "").strip()
+    if raw.startswith("$"):
+        raw = raw[1:]
+    dollars = Decimal(raw or "0")
+    quant = Decimal(10) ** USDC_DECIMALS
+    atomic = (dollars * quant).to_integral_value(rounding=ROUND_HALF_UP)
+    return str(int(atomic))
 
 
 def match_paid_path(path: str) -> str | None:

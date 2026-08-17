@@ -56,7 +56,9 @@ pytest
 
 Paid routes accept USDC via the `exact` scheme on **Solana mainnet** and **Base mainnet**. The facilitator default is `https://facilitator.payai.network`.
 
-- Unpaid or empty-body POSTs to paid routes return **402** with a `PAYMENT-REQUIRED` header — not 400.
+- Unpaid or empty-body POSTs to paid routes return **402** with a `PAYMENT-REQUIRED` header — not 400. The challenge `accepts` list includes USDC atomic `amount` / `maxAmountRequired` (6 decimals; dollar prices are unchanged).
+- GET on the three paid paths returns the same 402 challenge (not 405) so discovery scanners can register them. POST is the real API.
+- Unpaid 402 probes do not consume the rate-limit bucket.
 - Server env may contain **public** `PAY_TO_*` addresses only.
 - The process **refuses to start** if `SVM_PRIVATE_KEY` or `EVM_PRIVATE_KEY` is set.
 - Client signing keys belong in a local test-client `.env`, never on Railway.

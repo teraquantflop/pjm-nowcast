@@ -12,7 +12,7 @@ import hashlib
 import json
 import logging
 from datetime import datetime, timezone
-from typing import Any, Callable
+from typing import Any
 
 from starlette.types import ASGIApp, Receive, Scope, Send
 
@@ -25,6 +25,7 @@ from pjm_nowcast.payments.routes import (
     PAID_ROUTES,
     match_paid_path,
     price_for,
+    usdc_atomic_amount,
 )
 from pjm_nowcast.settings import Settings
 
@@ -61,12 +62,52 @@ class PaymentGateMiddleware:
             self.settings,
             fallback=_peer_host(scope),
         )
+
+        paid = match_paid_path(path) if method in {"GET", "POST"} else None
+
+        # Unpaid probes on paid paths (GET or POST) return 402 before body
+        # validation and do not consume the rate-limit bucket so scanners
+        # can hit all three routes without 429.
+        if (
+            paid
+            and not self.settings.x402_disabled
+            and not _has_payment(headers)
+        ):
+            if method == "GET":
+                await _send_402(send, self.settings, paid)
+                return
+            if method == "POST":
+                idem = headers.get("idempotency-key")
+                if idem:
+                    body = await _read_body(receive)
+                    handled = await _try_idempotency(
+                        send, self.store, paid, idem, body
+                    )
+                    if handled:
+                        return
+                    # No cached hit — still a payment challenge (replay later).
+                    replay_early = _replay_receive(body)
+                    if not _free_tier_allows(self.store, self.settings, paid, ip):
+                        await _send_402(send, self.settings, paid)
+                        return
+                    if not self.bucket.allow(ip):
+                        await _send_json(
+                            send,
+                            429,
+                            {"error": "rate_limited", "message": "Too many requests."},
+                        )
+                        return
+                    await self.app(scope, replay_early, send)
+                    return
+                if not _free_tier_allows(self.store, self.settings, paid, ip):
+                    await _send_402(send, self.settings, paid)
+                    return
+
         if not self.bucket.allow(ip):
             await _send_json(send, 429, {"error": "rate_limited", "message": "Too many requests."})
             return
 
-        paid = match_paid_path(path) if method == "POST" else None
-        if paid is None:
+        if paid is None or method != "POST":
             await self.app(scope, receive, send)
             return
 
@@ -75,50 +116,12 @@ class PaymentGateMiddleware:
         body = await _read_body(receive)
         replay = _replay_receive(body)
 
-        if idem:
-            row = self.store.get_idempotency(idem, paid)
-            req_hash = _body_hash(body)
-            if row is not None:
-                if str(row["request_hash"]) != req_hash:
-                    await _send_json(
-                        send,
-                        409,
-                        {
-                            "error": "idempotency_conflict",
-                            "message": "Idempotency-Key was reused with a different body.",
-                            "disclaimer": DISCLAIMER,
-                        },
-                    )
-                    return
-                if row["status_code"] and row["response_json"]:
-                    await _send_raw(
-                        send,
-                        int(row["status_code"]),
-                        row["response_json"].encode("utf-8"),
-                        content_type="application/json",
-                    )
-                    return
-
-        if self.settings.x402_disabled:
-            await self.app(scope, replay, send)
+        if idem and await _try_idempotency(send, self.store, paid, idem, body):
             return
 
-        # Free-tier (L1 only)
-        if (
-            paid in FREE_TIER_ELIGIBLE
-            and self.settings.free_tier_n > 0
-            and not _has_payment(headers)
-        ):
-            window = _window_start(self.settings.free_tier_window_seconds)
-            bucket = hashlib.sha256(
-                f"{self.settings.free_tier_salt}:{ip}".encode()
-            ).hexdigest()
-            if self.store.consume_free_tier(bucket, window, self.settings.free_tier_n):
-                await self.app(scope, replay, send)
-                return
-
-        if not _has_payment(headers):
-            await _send_402(send, self.settings, paid)
+        if self.settings.x402_disabled or not _has_payment(headers):
+            # Unpaid POST only reaches here when x402 is off or free-tier allowed.
+            await self.app(scope, replay, send)
             return
 
         # Capture response for idempotency store
@@ -232,39 +235,46 @@ def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
         return None
 
 
+def _accept_entry(*, network: str, pay_to: str, price: str) -> dict[str, Any]:
+    atomic = usdc_atomic_amount(price)
+    return {
+        "scheme": "exact",
+        "network": network,
+        "payTo": pay_to,
+        "asset": "USDC",
+        "price": price,
+        "amount": atomic,
+        "maxAmountRequired": atomic,
+    }
+
+
 def payment_required_payload(settings: Settings, path: str) -> dict[str, Any]:
     accepts = []
     price = price_for(path, settings)
     if settings.evm_pay_to:
         accepts.append(
-            {
-                "scheme": "exact",
-                "network": "eip155:8453",
-                "payTo": settings.evm_pay_to,
-                "price": price,
-                "asset": "USDC",
-            }
+            _accept_entry(
+                network="eip155:8453",
+                pay_to=settings.evm_pay_to,
+                price=price,
+            )
         )
     if settings.svm_pay_to:
         accepts.append(
-            {
-                "scheme": "exact",
-                "network": "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
-                "payTo": settings.svm_pay_to,
-                "price": price,
-                "asset": "USDC",
-            }
+            _accept_entry(
+                network="solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                pay_to=settings.svm_pay_to,
+                price=price,
+            )
         )
     if not accepts:
         # Still advertise so unpaid clients get a 402, not a 400.
         accepts.append(
-            {
-                "scheme": "exact",
-                "network": "eip155:8453",
-                "payTo": "0x0000000000000000000000000000000000000000",
-                "price": price,
-                "asset": "USDC",
-            }
+            _accept_entry(
+                network="eip155:8453",
+                pay_to="0x0000000000000000000000000000000000000000",
+                price=price,
+            )
         )
     return {
         "x402Version": 2,
@@ -275,10 +285,53 @@ def payment_required_payload(settings: Settings, path: str) -> dict[str, Any]:
     }
 
 
+async def _try_idempotency(
+    send: Send,
+    store: Store,
+    path: str,
+    key: str,
+    body: bytes,
+) -> bool:
+    """Return True if a cached idempotent response was sent."""
+    row = store.get_idempotency(key, path)
+    if row is None:
+        return False
+    if str(row["request_hash"]) != _body_hash(body):
+        await _send_json(
+            send,
+            409,
+            {
+                "error": "idempotency_conflict",
+                "message": "Idempotency-Key was reused with a different body.",
+                "disclaimer": DISCLAIMER,
+            },
+        )
+        return True
+    if row["status_code"] and row["response_json"]:
+        await _send_raw(
+            send,
+            int(row["status_code"]),
+            row["response_json"].encode("utf-8"),
+            content_type="application/json",
+        )
+        return True
+    return False
+
+
+def _free_tier_allows(store: Store, settings: Settings, path: str, ip: str) -> bool:
+    if path not in FREE_TIER_ELIGIBLE or settings.free_tier_n <= 0:
+        return False
+    window = _window_start(settings.free_tier_window_seconds)
+    bucket = hashlib.sha256(
+        f"{settings.free_tier_salt}:{ip}".encode()
+    ).hexdigest()
+    return store.consume_free_tier(bucket, window, settings.free_tier_n)
+
+
 async def _send_402(send: Send, settings: Settings, path: str) -> None:
     payload = payment_required_payload(settings, path)
-    encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
-    body = b"{}"
+    raw = json.dumps(payload).encode("utf-8")
+    encoded = base64.b64encode(raw).decode("ascii")
     await send(
         {
             "type": "http.response.start",
@@ -290,7 +343,7 @@ async def _send_402(send: Send, settings: Settings, path: str) -> None:
             ],
         }
     )
-    await send({"type": "http.response.body", "body": body})
+    await send({"type": "http.response.body", "body": raw})
 
 
 async def _send_json(send: Send, status: int, payload: dict[str, Any]) -> None:
