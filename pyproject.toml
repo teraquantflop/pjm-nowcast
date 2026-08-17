@@ -28,7 +28,7 @@ dev = ["pytest>=8.0.0"]
 include = ["pjm_nowcast*"]
 
 [tool.setuptools.package-data]
-pjm_nowcast = ["db/schema.sql"]
+pjm_nowcast = ["db/schema.sql", "static/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

@@ -99,7 +99,7 @@ def service_card(settings: Settings) -> dict:
         "disclaimer": DISCLAIMER,
         "publicBaseUrl": base,
         "tags": TAGS,
-        "iconUrl": settings.public_icon_url,
+        "iconUrl": settings.public_icon_url or f"{base}/favicon.ico",
         "timezone": "America/New_York",
         "networks": settings.network_list,
         "payTo": pay_to,

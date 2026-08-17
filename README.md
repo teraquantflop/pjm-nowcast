@@ -10,7 +10,7 @@ HTTP and MCP request handlers only read a local SQLite store. A background polle
 
 | Tier | Route | What it returns |
 |------|--------|-----------------|
-| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /openapi.json` | Health, service card, fixed sample, OpenAPI 3 |
+| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /openapi.json`, `GET /favicon.ico` | Health, service card, fixed sample, OpenAPI 3, favicon |
 | L1 | `POST /v1/nowcast/latest` | Latest snapshot + trailing 24h stats |
 | L2 | `POST /v1/nowcast/history` | 1–72h history (native poll points) |
 | L3 | `POST /v1/nowcast/history/extended` | Up to 30-day history, hourly buckets, prior-period comparison |
