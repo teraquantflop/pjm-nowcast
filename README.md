@@ -10,12 +10,14 @@ HTTP and MCP request handlers only read a local SQLite store. A background polle
 
 | Tier | Route | What it returns |
 |------|--------|-----------------|
-| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample` | Health, service card, fixed sample |
+| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /openapi.json` | Health, service card, fixed sample, OpenAPI 3 |
 | L1 | `POST /v1/nowcast/latest` | Latest snapshot + trailing 24h stats |
 | L2 | `POST /v1/nowcast/history` | 1–72h history (native poll points) |
 | L3 | `POST /v1/nowcast/history/extended` | Up to 30-day history, hourly buckets, prior-period comparison |
 
 Every nowcast payload includes `asOf`, `polledAt`, `ageSeconds`, `maxAgeSeconds`, and `stale`. Units are `USD/MWh` (prices/spreads) and `MW` (load).
+
+`GET /openapi.json` is OpenAPI 3. Free routes set `security: []`. The three paid nowcast POSTs include `x-payment-info` and a `402` response. The root service card at `GET /` is unchanged.
 
 `sourcePublishedPeakTodayMw` / `sourcePublishedPeakTomorrowMw` are **source-published** peak figures from the public page, not produced by this service.
 

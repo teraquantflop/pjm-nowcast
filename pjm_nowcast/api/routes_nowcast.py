@@ -15,7 +15,7 @@ from pjm_nowcast.stats.assemble import assemble_history, assemble_latest
 router = APIRouter()
 
 
-@router.post("/v1/nowcast/latest")
+@router.post("/v1/nowcast/latest", summary="Latest snapshot", tags=["nowcast"])
 async def latest(request: Request):
     settings: Settings = request.app.state.settings
     raw = await request.body()
@@ -31,7 +31,7 @@ async def latest(request: Request):
     return body
 
 
-@router.post("/v1/nowcast/history")
+@router.post("/v1/nowcast/history", summary="Short history", tags=["nowcast"])
 async def history(request: Request):
     settings: Settings = request.app.state.settings
     raw = await request.body()
@@ -59,7 +59,11 @@ async def history(request: Request):
     return body
 
 
-@router.post("/v1/nowcast/history/extended")
+@router.post(
+    "/v1/nowcast/history/extended",
+    summary="Extended history",
+    tags=["nowcast"],
+)
 async def history_extended(request: Request):
     settings: Settings = request.app.state.settings
     raw = await request.body()

@@ -12,7 +12,7 @@ from pjm_nowcast.settings import Settings
 router = APIRouter()
 
 
-@router.get("/health")
+@router.get("/health", summary="Health", tags=["free"])
 def health(request: Request) -> dict:
     settings: Settings = request.app.state.settings
     store = request.app.state.store
@@ -54,17 +54,17 @@ def health(request: Request) -> dict:
     }
 
 
-@router.get("/")
+@router.get("/", summary="Service card", tags=["free"])
 def root(request: Request) -> dict:
     return service_card(request.app.state.settings)
 
 
-@router.get("/v1/discovery")
+@router.get("/v1/discovery", summary="Service card (alias)", tags=["free"])
 def discovery(request: Request) -> dict:
     return service_card(request.app.state.settings)
 
 
-@router.get("/v1/demo/sample")
+@router.get("/v1/demo/sample", summary="Fixed demo sample", tags=["free"])
 def demo_sample(request: Request):
     settings: Settings = request.app.state.settings
     if not settings.free_demo_enabled:

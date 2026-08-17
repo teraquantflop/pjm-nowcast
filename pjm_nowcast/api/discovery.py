@@ -138,6 +138,13 @@ def service_card(settings: Settings) -> dict:
                 "description": "Fixed sample payload. Does not read the live store.",
             },
             {
+                "tier": "L0",
+                "method": "GET",
+                "path": "/openapi.json",
+                "price": "free",
+                "description": "OpenAPI 3 document. Free routes use security: []. Paid nowcast POSTs include x-payment-info and 402.",
+            },
+            {
                 "tier": "L1",
                 "method": "POST",
                 "path": "/v1/nowcast/latest",

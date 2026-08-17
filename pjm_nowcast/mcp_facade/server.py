@@ -14,7 +14,7 @@ from pjm_nowcast.payments.gate import payment_required_payload
 from pjm_nowcast.settings import Settings
 from pjm_nowcast.stats.assemble import assemble_history, assemble_latest
 
-router = APIRouter()
+router = APIRouter(include_in_schema=False)
 
 
 TOOLS = [

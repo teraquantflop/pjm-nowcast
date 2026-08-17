@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pjm_nowcast import DISCLAIMER, __version__
+from pjm_nowcast.api.openapi import install_openapi
 from pjm_nowcast.api.routes_l0 import router as l0_router
 from pjm_nowcast.api.routes_nowcast import router as nowcast_router
 from pjm_nowcast.db.store import Store
@@ -53,6 +54,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Trailing and semi-live descriptive statistics on PJM RTO LMP, "
             "zonal LMP spreads, and RTO load. " + DISCLAIMER
         ),
+        openapi_url="/openapi.json",
         lifespan=lifespan,
     )
     app.state.settings = settings
@@ -75,6 +77,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     if settings.mcp_enabled:
         from pjm_nowcast.mcp_facade.server import mcp_router
 
-        app.include_router(mcp_router(), prefix=settings.mcp_path)
+        app.include_router(
+            mcp_router(),
+            prefix=settings.mcp_path,
+            include_in_schema=False,
+        )
 
+    install_openapi(app, settings)
     return app
