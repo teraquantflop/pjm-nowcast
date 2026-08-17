@@ -21,10 +21,14 @@ from pjm_nowcast.db.store import Store
 from pjm_nowcast.payments.client_ip import client_ip
 from pjm_nowcast.payments.rate_limit import TokenBucket
 from pjm_nowcast.payments.routes import (
+    CHALLENGE_TIMEOUT_SECONDS,
     FREE_TIER_ELIGIBLE,
+    PAID_DESCRIPTIONS,
     PAID_ROUTES,
     match_paid_path,
     price_for,
+    resource_object,
+    resource_url,
     usdc_atomic_amount,
 )
 from pjm_nowcast.settings import Settings
@@ -214,18 +218,14 @@ def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
                 )
             if not accepts:
                 continue
-            desc = {
-                "/v1/nowcast/latest": "Latest descriptive snapshot of RTO LMP, zonal spreads, and RTO load.",
-                "/v1/nowcast/history": "1–72h descriptive history of RTO LMP, zonal spreads, and RTO load.",
-                "/v1/nowcast/history/extended": "Extended descriptive history within the retention window.",
-            }[path]
+            desc = PAID_DESCRIPTIONS[path]
             routes[f"POST {path}"] = RouteConfig(
                 accepts=accepts,
                 mime_type="application/json",
                 description=desc,
                 service_name="pjm-nowcast",
                 tags=["pjm", "lmp", "load", "spread", "electricity"],
-                resource=f"{settings.public_base_url.rstrip('/')}{path}",
+                resource=resource_url(settings, path),
             )
         if not routes:
             return None
@@ -245,6 +245,7 @@ def _accept_entry(*, network: str, pay_to: str, price: str) -> dict[str, Any]:
         "price": price,
         "amount": atomic,
         "maxAmountRequired": atomic,
+        "maxTimeoutSeconds": CHALLENGE_TIMEOUT_SECONDS,
     }
 
 
@@ -279,7 +280,7 @@ def payment_required_payload(settings: Settings, path: str) -> dict[str, Any]:
     return {
         "x402Version": 2,
         "error": "Payment required",
-        "resource": f"{settings.public_base_url.rstrip('/')}{path}",
+        "resource": resource_object(settings, path),
         "accepts": accepts,
         "disclaimer": DISCLAIMER,
     }

@@ -52,10 +52,14 @@ def test_only_three_paid_nowcast_posts_have_payment_docs(client):
         from pjm_nowcast.payments.routes import usdc_atomic_amount
 
         atomic = usdc_atomic_amount(info["price"])
+        assert isinstance(info["resource"], dict)
+        assert info["resource"]["url"].endswith(path)
         for acc in info["accepts"]:
             assert acc["amount"] == atomic
             assert acc["maxAmountRequired"] == atomic
+            assert acc["maxTimeoutSeconds"] == 60
             assert acc["price"] == info["price"]
+            assert acc["scheme"] == "exact"
 
 
 def test_mcp_not_in_openapi(client):

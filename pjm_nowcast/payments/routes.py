@@ -14,9 +14,34 @@ PAID_ROUTES: dict[str, str] = {
 
 FREE_TIER_ELIGIBLE = {"/v1/nowcast/latest"}
 
+PAID_DESCRIPTIONS: dict[str, str] = {
+    "/v1/nowcast/latest": (
+        "Latest descriptive snapshot of RTO LMP, zonal spreads, and RTO load."
+    ),
+    "/v1/nowcast/history": (
+        "1–72h descriptive history of RTO LMP, zonal spreads, and RTO load."
+    ),
+    "/v1/nowcast/history/extended": (
+        "Extended descriptive history within the retention window."
+    ),
+}
+
 # USDC has 6 decimals. Dollar prices are unchanged; these are the atomic strings
 # scanners need: $0.02 → "20000", $0.10 → "100000", $0.25 → "250000".
 USDC_DECIMALS = 6
+CHALLENGE_TIMEOUT_SECONDS = 60
+
+
+def resource_url(settings: Settings, path: str) -> str:
+    return f"{settings.public_base_url.rstrip('/')}{path}"
+
+
+def resource_object(settings: Settings, path: str) -> dict[str, str]:
+    out = {"url": resource_url(settings, path)}
+    desc = PAID_DESCRIPTIONS.get(path)
+    if desc:
+        out["description"] = desc
+    return out
 
 
 def price_for(path: str, settings: Settings) -> str:

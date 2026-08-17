@@ -60,11 +60,16 @@ def test_empty_json_object_is_402_with_atomic_amounts(enforcing_client):
         body = r.json()
         assert body["accepts"]
         assert challenge["accepts"] == body["accepts"]
+        assert challenge["x402Version"] == 2
+        assert isinstance(challenge["resource"], dict)
+        assert challenge["resource"]["url"] == f"http://testserver{path}"
+        assert challenge["resource"].get("description")
         for acc in challenge["accepts"]:
             assert acc["scheme"] == "exact"
             assert acc["asset"] == "USDC"
             assert acc["amount"] == atomic
             assert acc["maxAmountRequired"] == atomic
+            assert acc["maxTimeoutSeconds"] == 60
             assert acc["price"] == prices[path]
             assert acc["network"]
             assert acc["payTo"]
