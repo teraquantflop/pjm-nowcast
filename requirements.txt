@@ -9,4 +9,6 @@ tzdata>=2024.1
 # x402 extras: facilitator verify/settle on paid routes. solana pin per PayAI FastAPI docs.
 x402[fastapi,evm,svm]>=0.2.0
 solana>=0.36.0,<0.40
+# Optional at runtime: CDP Base facilitator when CDP_API_KEY_* are set.
+cdp-sdk>=1.0.0
 pytest>=8.0.0

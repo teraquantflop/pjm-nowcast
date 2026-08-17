@@ -6,6 +6,7 @@ def test_health_empty(client):
     assert r.status_code == 200
     assert r.json()["status"] == "unavailable"
     assert r.json()["db"] == "ok"
+    assert r.json()["facilitators"]["payai"] is True
 
 
 def test_service_card(client):

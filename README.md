@@ -54,7 +54,14 @@ pytest
 
 ## Payments (x402)
 
-Paid routes accept USDC via the `exact` scheme on **Solana mainnet** and **Base mainnet**. The facilitator default is `https://facilitator.payai.network`.
+Paid routes accept USDC via the `exact` scheme on **Solana mainnet** and **Base mainnet**.
+
+Facilitators (verify/settle only; they do not change prices or pay-to addresses):
+
+- **PayAI** (`FACILITATOR_URL`, default `https://facilitator.payai.network`) — Solana, and Base when CDP is not configured.
+- **Coinbase CDP** — Base (`eip155:8453`) when both `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` are set. Missing keys keep PayAI-only; the process still starts.
+
+`GET /health` and `GET /` report which facilitators are configured (names only, never secrets).
 
 - Unpaid or empty-body POSTs to paid routes return **402** with a `PAYMENT-REQUIRED` header — not 400. The challenge `accepts` list includes USDC atomic `amount` / `maxAmountRequired` (6 decimals; dollar prices are unchanged).
 - GET on the three paid paths returns the same 402 challenge (not 405) so discovery scanners can register them. POST is the real API.

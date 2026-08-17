@@ -19,6 +19,7 @@ dependencies = [
   "tzdata>=2024.1",
   "x402[fastapi,evm,svm]>=0.2.0",
   "solana>=0.36.0,<0.40",
+  "cdp-sdk>=1.0.0",
 ]
 
 [project.optional-dependencies]

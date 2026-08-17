@@ -102,6 +102,7 @@ def service_card(settings: Settings) -> dict:
         "iconUrl": settings.public_icon_url or f"{base}/favicon.ico",
         "timezone": "America/New_York",
         "networks": settings.network_list,
+        "facilitators": settings.facilitator_status(),
         "payTo": pay_to,
         "prices": prices,
         "mcp": {"enabled": settings.mcp_enabled, "path": settings.mcp_path}

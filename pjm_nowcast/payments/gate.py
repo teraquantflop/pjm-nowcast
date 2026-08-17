@@ -163,7 +163,7 @@ class PaymentGateMiddleware:
 def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
     """Best-effort official middleware. Failure leaves stub 402 in place."""
     try:
-        from x402.http import FacilitatorConfig, HTTPFacilitatorClient, PaymentOption
+        from x402.http import PaymentOption
         from x402.http.middleware.fastapi import PaymentMiddlewareASGI
         from x402.http.types import RouteConfig
         from x402.mechanisms.evm.exact import ExactEvmServerScheme
@@ -174,19 +174,10 @@ def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
         return None
 
     try:
-        auth = None
-        if settings.payai_api_key_id and settings.payai_api_key_secret:
-            from pjm_nowcast.payments.payai_auth import PayAIAuthProvider
+        from pjm_nowcast.payments.facilitators import build_facilitator_clients
 
-            auth = PayAIAuthProvider(
-                settings.payai_api_key_id, settings.payai_api_key_secret
-            )
-        facilitator = HTTPFacilitatorClient(
-            FacilitatorConfig(url=settings.facilitator_url, auth_provider=auth)
-            if auth
-            else FacilitatorConfig(url=settings.facilitator_url)
-        )
-        server = x402ResourceServer(facilitator)
+        clients = build_facilitator_clients(settings)
+        server = x402ResourceServer(clients)
         evm_net = "eip155:8453"
         svm_net = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
         if evm_net in settings.network_list and settings.evm_pay_to:

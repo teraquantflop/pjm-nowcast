@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     payai_api_key_id: str = ""
     payai_api_key_secret: str = ""
 
+    # Coinbase CDP facilitator (Base). Optional; PayAI-only if unset.
+    cdp_api_key_id: str = ""
+    cdp_api_key_secret: str = ""
+
     log_level: str = "INFO"
 
     # Test / local only. Production start fails if true.
@@ -158,6 +162,20 @@ class Settings(BaseSettings):
     @property
     def default_l1_window_hours(self) -> int:
         return 24
+
+    @property
+    def cdp_configured(self) -> bool:
+        return bool(self.cdp_api_key_id.strip() and self.cdp_api_key_secret.strip())
+
+    def facilitator_status(self) -> dict[str, object]:
+        """Public names only — never include secrets."""
+        cdp = self.cdp_configured
+        return {
+            "payai": True,
+            "cdp": cdp,
+            "base": "cdp" if cdp else "payai",
+            "solana": "payai",
+        }
 
 
 @lru_cache

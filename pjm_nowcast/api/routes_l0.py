@@ -49,6 +49,7 @@ def health(request: Request) -> dict:
     return {
         "status": status,
         "db": "ok",
+        "facilitators": settings.facilitator_status(),
         "poller": {
             "lastSuccessAt": poll.get("lastSuccessAt"),
             "lastError": poll.get("lastError"),
