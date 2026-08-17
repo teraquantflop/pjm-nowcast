@@ -36,11 +36,6 @@ def service_card(settings: Settings) -> dict:
         "POST /v1/nowcast/history": settings.price_l2,
         "POST /v1/nowcast/history/extended": settings.price_l3,
     }
-    pay_to = {}
-    if settings.evm_pay_to:
-        pay_to["eip155:8453"] = settings.evm_pay_to
-    if settings.svm_pay_to:
-        pay_to["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] = settings.svm_pay_to
 
     latest_schema = {
         "type": "object",
@@ -103,7 +98,6 @@ def service_card(settings: Settings) -> dict:
         "timezone": "America/New_York",
         "networks": settings.network_list,
         "facilitators": settings.facilitator_status(),
-        "payTo": pay_to,
         "prices": prices,
         "mcp": {"enabled": settings.mcp_enabled, "path": settings.mcp_path}
         if settings.mcp_enabled

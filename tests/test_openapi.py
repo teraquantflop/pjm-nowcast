@@ -73,15 +73,13 @@ def test_mcp_not_in_openapi(client):
     assert f"{mcp}/" not in spec["paths"]
 
 
-def test_openapi_does_not_redefine_wallets(client):
+def test_openapi_catalog_omits_payto(client):
     spec = client.get("/openapi.json").json()
-    settings = client.app.state.settings
+    dumped = str(spec)
+    assert "payTo" not in dumped
+    assert "pay_to" not in dumped
     for path in PAID:
         accepts = spec["paths"][path]["post"]["x-payment-info"]["accepts"]
         for item in accepts:
-            if item["network"].startswith("eip155"):
-                if settings.evm_pay_to:
-                    assert item["payTo"] == settings.evm_pay_to
-            if item["network"].startswith("solana"):
-                if settings.svm_pay_to:
-                    assert item["payTo"] == settings.svm_pay_to
+            assert "payTo" not in item
+            assert "pay_to" not in item

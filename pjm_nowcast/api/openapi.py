@@ -63,8 +63,17 @@ _REQUEST_MODELS = {
 }
 
 
+def _catalog_accepts(accepts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """OpenAPI is a free catalog — omit receiving addresses."""
+    out = []
+    for item in accepts:
+        copy = {k: v for k, v in item.items() if k not in {"payTo", "pay_to"}}
+        out.append(copy)
+    return out
+
+
 def payment_info(settings: Settings, path: str) -> dict[str, Any]:
-    """Document existing payment terms. Does not invent new prices or wallets."""
+    """Document terms for agents. Wallets stay off this free document."""
     payload = payment_required_payload(settings, path)
     return {
         "scheme": "exact",
@@ -73,7 +82,7 @@ def payment_info(settings: Settings, path: str) -> dict[str, Any]:
         "facilitator": settings.facilitator_url,
         "networks": list(settings.network_list),
         "resource": payload["resource"],
-        "accepts": payload["accepts"],
+        "accepts": _catalog_accepts(payload["accepts"]),
     }
 
 
