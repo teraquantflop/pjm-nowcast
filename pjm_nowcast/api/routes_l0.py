@@ -4,9 +4,16 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
-from pjm_nowcast.api.discovery import load_demo_sample, service_card
+from pjm_nowcast.api.discovery import (
+    llms_txt,
+    load_demo_sample,
+    robots_txt,
+    service_card,
+    skill_markdown,
+    well_known_x402,
+)
 from pjm_nowcast.api.errors import error_response
 from pjm_nowcast.settings import Settings
 
@@ -83,6 +90,34 @@ def favicon(request: Request):
     if not path.is_file():
         return error_response(404, "not_found", "Favicon is not packaged.")
     return FileResponse(path, media_type=media, filename=path.name)
+
+
+@router.get("/swagger.json", summary="OpenAPI alias", tags=["free"])
+def swagger(request: Request):
+    return JSONResponse(request.app.openapi())
+
+
+@router.get("/skill.md", include_in_schema=False)
+@router.get("/SKILL.md", include_in_schema=False)
+def skill(request: Request):
+    settings: Settings = request.app.state.settings
+    return PlainTextResponse(skill_markdown(settings), media_type="text/markdown")
+
+
+@router.get("/llms.txt", summary="LLM discovery index", tags=["free"])
+def llms(request: Request):
+    return PlainTextResponse(llms_txt(request.app.state.settings), media_type="text/plain")
+
+
+@router.get("/robots.txt", include_in_schema=False)
+def robots():
+    return PlainTextResponse(robots_txt(), media_type="text/plain")
+
+
+@router.get("/.well-known/x402", summary="x402 well-known", tags=["free"])
+@router.get("/.well-known/x402.json", include_in_schema=False)
+def well_known(request: Request):
+    return JSONResponse(well_known_x402(request.app.state.settings))
 
 
 @router.get("/v1/demo/sample", summary="Fixed demo sample", tags=["free"])

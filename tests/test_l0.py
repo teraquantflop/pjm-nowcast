@@ -57,6 +57,48 @@ def test_service_card_icon_url_defaults_to_favicon(client):
     assert card["iconUrl"].endswith("/favicon.ico")
 
 
+def test_swagger_matches_openapi(client):
+    swagger = client.get("/swagger.json")
+    openapi = client.get("/openapi.json")
+    assert swagger.status_code == 200
+    assert openapi.status_code == 200
+    assert swagger.json() == openapi.json()
+
+
+def test_skill_md_aliases(client):
+    lower = client.get("/skill.md")
+    upper = client.get("/SKILL.md")
+    assert lower.status_code == 200
+    assert upper.status_code == 200
+    assert lower.text == upper.text
+    assert "PJM RTO nowcast" in lower.text
+    assert "/openapi.json" in lower.text
+    assert "PAYMENT-REQUIRED" in lower.text
+    assert "payTo" not in lower.text
+    assert client.app.state.settings.price_l1 in lower.text
+
+
+def test_llms_robots_well_known(client):
+    llms = client.get("/llms.txt")
+    robots = client.get("/robots.txt")
+    wk = client.get("/.well-known/x402")
+    wk_json = client.get("/.well-known/x402.json")
+    assert llms.status_code == 200
+    assert "/swagger.json" in llms.text
+    assert robots.status_code == 200
+    assert "Allow: /openapi.json" in robots.text
+    assert wk.status_code == 200
+    assert wk_json.status_code == 200
+    assert wk.json() == wk_json.json()
+    assert "payTo" not in wk.text
+    card = client.get("/").json()
+    paths = {e["path"] for e in card["endpoints"]}
+    assert "/swagger.json" in paths
+    assert "/skill.md" in paths
+    assert "/llms.txt" in paths
+    assert "/.well-known/x402" in paths
+
+
 def test_health_ok_after_seed(client, store):
     seed_observation(store, hours_ago=0.1)
     r = client.get("/health")

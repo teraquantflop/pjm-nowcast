@@ -56,6 +56,11 @@ def test_free_routes_do_not_expose_wallets(walleted_client):
         "/",
         "/v1/discovery",
         "/openapi.json",
+        "/swagger.json",
+        "/skill.md",
+        "/llms.txt",
+        "/.well-known/x402",
+        "/.well-known/x402.json",
         "/v1/demo/sample",
     ):
         r = walleted_client.get(path)

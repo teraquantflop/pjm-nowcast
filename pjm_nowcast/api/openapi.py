@@ -29,6 +29,9 @@ FREE_PATHS = {
     "/v1/demo/sample",
     "/v1/discovery",
     "/openapi.json",
+    "/swagger.json",
+    "/llms.txt",
+    "/.well-known/x402",
 }
 
 PAID_PATHS = frozenset(PAID_ROUTES)

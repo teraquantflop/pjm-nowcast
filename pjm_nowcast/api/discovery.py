@@ -22,6 +22,22 @@ WHAT_IT_IS_NOT = (
 
 TAGS = ["pjm", "lmp", "load", "spread", "electricity"]
 
+# Free discovery surfaces (not new paid URLs).
+FREE_DISCOVERY_PATHS = (
+    "/",
+    "/health",
+    "/openapi.json",
+    "/swagger.json",
+    "/llms.txt",
+    "/.well-known/x402",
+    "/.well-known/x402.json",
+    "/skill.md",
+    "/SKILL.md",
+    "/robots.txt",
+    "/v1/discovery",
+    "/v1/demo/sample",
+)
+
 
 def load_demo_sample() -> dict:
     import json
@@ -140,6 +156,41 @@ def service_card(settings: Settings) -> dict:
                 "description": "OpenAPI 3 document. Free routes use security: []. Paid nowcast POSTs include x-payment-info and 402.",
             },
             {
+                "tier": "L0",
+                "method": "GET",
+                "path": "/swagger.json",
+                "price": "free",
+                "description": "Alias of /openapi.json.",
+            },
+            {
+                "tier": "L0",
+                "method": "GET",
+                "path": "/skill.md",
+                "price": "free",
+                "description": "Short agent skill card (also /SKILL.md).",
+            },
+            {
+                "tier": "L0",
+                "method": "GET",
+                "path": "/llms.txt",
+                "price": "free",
+                "description": "Plain-text discovery index.",
+            },
+            {
+                "tier": "L0",
+                "method": "GET",
+                "path": "/.well-known/x402",
+                "price": "free",
+                "description": "x402 well-known catalog (also /.well-known/x402.json).",
+            },
+            {
+                "tier": "L0",
+                "method": "GET",
+                "path": "/robots.txt",
+                "price": "free",
+                "description": "Allows free discovery paths.",
+            },
+            {
                 "tier": "L1",
                 "method": "POST",
                 "path": "/v1/nowcast/latest",
@@ -180,5 +231,130 @@ def service_card(settings: Settings) -> dict:
                     "compare": "prior_period",
                 },
             },
+        ],
+    }
+
+
+def skill_markdown(settings: Settings) -> str:
+    base = settings.public_base_url.rstrip("/")
+    return "\n".join(
+        [
+            "# pjm-nowcast",
+            "",
+            "PJM RTO nowcast: latest load, RTO LMP, and zonal LMPs from public page ingest.",
+            "Descriptive statistics only. Not a forecast, signal, or trading recommendation.",
+            "",
+            f"Base URL: {base}",
+            "",
+            "Pay: x402 exact USDC on Solana and Base. Unpaid paid routes return HTTP 402 with a PAYMENT-REQUIRED header.",
+            "",
+            "Free:",
+            "- GET /",
+            "- GET /health",
+            "- GET /openapi.json",
+            "- GET /swagger.json",
+            "- GET /llms.txt",
+            "- GET /.well-known/x402",
+            "",
+            "Paid (existing catalog):",
+            f"- POST /v1/nowcast/latest — {settings.price_l1}",
+            f"- POST /v1/nowcast/history — {settings.price_l2}",
+            f"- POST /v1/nowcast/history/extended — {settings.price_l3}",
+            "",
+            "Example paid request:",
+            "",
+            "```json",
+            '{"families": ["rto_lmp", "zonal_spread", "rto_load"]}',
+            "```",
+            "",
+            "On 402, decode PAYMENT-REQUIRED, settle x402 exact USDC, retry the same POST with PAYMENT-SIGNATURE.",
+            "",
+            f"OpenAPI: {base}/openapi.json",
+            "",
+        ]
+    )
+
+
+def llms_txt(settings: Settings) -> str:
+    base = settings.public_base_url.rstrip("/")
+    lines = [
+        "# pjm-nowcast",
+        "",
+        WHAT_IT_IS,
+        "",
+        f"Base: {base}",
+        "",
+        "## Free discovery",
+    ]
+    for path in FREE_DISCOVERY_PATHS:
+        lines.append(f"- GET {path}")
+    lines.extend(
+        [
+            "",
+            "## Paid",
+            f"- POST /v1/nowcast/latest — {settings.price_l1}",
+            f"- POST /v1/nowcast/history — {settings.price_l2}",
+            f"- POST /v1/nowcast/history/extended — {settings.price_l3}",
+            "",
+            f"Docs: {base}/openapi.json {base}/skill.md",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def robots_txt() -> str:
+    lines = ["User-agent: *", "Allow: /"]
+    for path in FREE_DISCOVERY_PATHS:
+        if path != "/":
+            lines.append(f"Allow: {path}")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def well_known_x402(settings: Settings) -> dict:
+    """Catalog extras for agents. No payTo / wallets."""
+    base = settings.public_base_url.rstrip("/")
+    return {
+        "x402Version": 2,
+        "name": "pjm-nowcast",
+        "description": WHAT_IT_IS,
+        "url": base,
+        "openapi": f"{base}/openapi.json",
+        "swagger": f"{base}/swagger.json",
+        "skill": f"{base}/skill.md",
+        "llms": f"{base}/llms.txt",
+        "networks": list(settings.network_list),
+        "facilitators": settings.facilitator_status(),
+        "resources": [
+            {
+                "url": f"{base}/v1/nowcast/latest",
+                "method": "POST",
+                "price": settings.price_l1,
+                "description": "Latest load, RTO LMP, and zonal LMP descriptive snapshot.",
+            },
+            {
+                "url": f"{base}/v1/nowcast/history",
+                "method": "POST",
+                "price": settings.price_l2,
+                "description": "1–72h descriptive history.",
+            },
+            {
+                "url": f"{base}/v1/nowcast/history/extended",
+                "method": "POST",
+                "price": settings.price_l3,
+                "description": "Extended descriptive history within retention.",
+            },
+        ],
+        "free": [
+            f"{base}{p}"
+            for p in (
+                "/",
+                "/health",
+                "/openapi.json",
+                "/swagger.json",
+                "/llms.txt",
+                "/.well-known/x402",
+            )
         ],
     }
