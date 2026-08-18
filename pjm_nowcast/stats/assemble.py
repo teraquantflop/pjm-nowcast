@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 from typing import Any, Iterable, Literal
@@ -88,11 +89,19 @@ def _points_lmp(obs: list[Observation]) -> list[dict[str, Any]]:
 
 
 def _points_load(obs: list[Observation]) -> list[dict[str, Any]]:
-    return [
-        {"t": o.ts.isoformat(), "value": o.load_mw}
-        for o in obs
-        if o.load_mw is not None
-    ]
+    out: list[dict[str, Any]] = []
+    for o in obs:
+        v = o.load_mw
+        if v is None:
+            continue
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(f):
+            continue
+        out.append({"t": o.ts.isoformat(), "value": f})
+    return out
 
 
 def _points_spread(obs: list[Observation], min_zones: int) -> list[dict[str, Any]]:
@@ -209,7 +218,11 @@ def assemble_history(
             block = _load_block(series, series[-1])
             if include_points:
                 pts = _points_load(series)
-                block["points"] = _hourly(pts) if resolution == "hourly" else pts
+                # Need ≥2 finite points for a series/hist; avoid NaN ranges.
+                if len(pts) >= 2:
+                    block["points"] = _hourly(pts) if resolution == "hourly" else pts
+                else:
+                    block["points"] = []
             target["rtoLoad"] = block
 
     attach(body, window)

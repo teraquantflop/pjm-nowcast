@@ -64,7 +64,7 @@ def fetch_page(settings: Settings, previous: dict[str, Any] | None = None) -> di
 
 def parse_html(html: str, zones: tuple[str, ...]) -> dict[str, Any] | None:
     soup = BeautifulSoup(html, "html.parser")
-    text = soup.get_text(" ", strip=True)
+    text = _normalize_text(soup.get_text(" ", strip=True))
 
     load = _extract_current_load(text)
     rto = _extract_rto_lmp(text)
@@ -76,6 +76,9 @@ def parse_html(html: str, zones: tuple[str, ...]) -> dict[str, Any] | None:
         load = _from_data_attrs(soup, ["currentload", "instantaneousload", "actualload"])
     if rto is None:
         rto = _from_data_attrs(soup, ["rtolmp", "rto_lmp", "lmp"])
+
+    if load is None:
+        log.warning("current load missing; sample=%r", text[:400])
 
     if load is None and rto is None:
         return None
@@ -139,27 +142,57 @@ def _carried(previous: dict[str, Any], reason: str) -> dict[str, Any]:
     return out
 
 
-def _extract_current_load(text: str) -> float | None:
-    m = re.search(r"([\d,]{4,7})\s*current\s+load\b", text, re.IGNORECASE)
-    if m:
-        return _to_float(m.group(1))
-    m = re.search(
-        r"current\s+load\s*(?:\(MW\))?\s*[:\s]*([\d,]{4,7})",
+# 1,234 or 123456, optional decimals. Not the old [\d,]{4,7} (too tight).
+_MW_NUM = r"(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?"
+_MW_UNIT = r"(?:\(\s*MW\s*\)|MW)"
+_RTO_MW_MIN = 20_000.0
+_RTO_MW_MAX = 250_000.0
+
+_LOAD_LABEL = r"current\s+load(?:\s*\(\s*MW\s*\))?"
+_PEAK_TODAY_LABEL = r"forecasted\s+peak(?:\s*\(\s*MW\s*\))?"
+
+
+def _normalize_text(text: str) -> str:
+    for src in ("\u00a0", "\u202f", "\u2007", "\u2009", "\u200a", "\u2060", "\ufeff"):
+        text = text.replace(src, " ")
+    return re.sub(r"[ \t\r\n\f]+", " ", text).strip()
+
+
+def _sane_rto_mw(val: float | None) -> float | None:
+    if val is None or not math.isfinite(val):
+        return None
+    if _RTO_MW_MIN <= val <= _RTO_MW_MAX:
+        return val
+    return None
+
+
+def _labeled_mw(text: str, label: str) -> float | None:
+    """Number immediately before or after a label; optional MW between them."""
+    before = re.search(
+        rf"(?P<num>{_MW_NUM})\s*(?:{_MW_UNIT})?\s*{label}",
         text,
         re.IGNORECASE,
     )
-    if m:
-        return _to_float(m.group(1))
-    for m in re.finditer(r"current\s+load", text, re.IGNORECASE):
-        start = max(0, m.start() - 40)
-        end = min(len(text), m.end() + 60)
-        window = text[start:end]
-        if re.search(r"forecast", window, re.IGNORECASE):
-            continue
-        num = _first_number(window)
-        if num is not None and 20_000 <= num <= 200_000:
-            return num
+    if before:
+        return _sane_rto_mw(_to_float(before.group("num")))
+
+    after = re.search(
+        rf"{label}\s*(?:{_MW_UNIT})?\s*[:\s]*(?P<num>{_MW_NUM})",
+        text,
+        re.IGNORECASE,
+    )
+    if after:
+        # Do not steal the next metric's leading number
+        # (e.g. load after-label grabbing forecasted-peak MW).
+        rest = text[after.end() :]
+        if re.match(rf"\s*(?:{_MW_UNIT})?\s*forecasted\s+peak", rest, re.IGNORECASE):
+            return None
+        return _sane_rto_mw(_to_float(after.group("num")))
     return None
+
+
+def _extract_current_load(text: str) -> float | None:
+    return _labeled_mw(text, _LOAD_LABEL)
 
 
 def _extract_rto_lmp(text: str) -> float | None:
@@ -182,40 +215,28 @@ def _extract_rto_lmp(text: str) -> float | None:
 
 
 def _extract_forecast_peak_today(text: str) -> float | None:
-    m = re.search(r"([\d,]{4,7})\s*forecasted\s+peak\b", text, re.IGNORECASE)
-    if m:
-        return _to_float(m.group(1))
-    m = re.search(
-        r"forecasted\s+peak\s*(?:\(MW\))?\s*[:\s]*([\d,]{4,7})",
-        text,
-        re.IGNORECASE,
-    )
-    if m:
-        return _to_float(m.group(1))
-    return None
+    return _labeled_mw(text, _PEAK_TODAY_LABEL)
 
 
 def _extract_forecast_peak_tomorrow(text: str) -> float | None:
     m = re.search(
-        r"Tomorrow'?s?\s+Forecast.*?([\d,]{4,7})\s*peak",
+        rf"Tomorrow'?s?\s+Forecast.*?({_MW_NUM})\s*peak",
         text,
         re.IGNORECASE | re.DOTALL,
     )
     if m:
-        val = _to_float(m.group(1))
-        if val is not None and 20_000 <= val <= 200_000:
+        val = _sane_rto_mw(_to_float(m.group(1)))
+        if val is not None:
             return val
     m = re.search(
-        r"([\d,]{4,7})\s*peak\s*\(MW\).*?Tomorrow|"
-        r"Tomorrow.*?([\d,]{4,7})\s*(?:peak)?",
+        rf"({_MW_NUM})\s*peak\s*\(MW\).*?Tomorrow|"
+        rf"Tomorrow.*?({_MW_NUM})\s*(?:peak)?",
         text,
         re.IGNORECASE | re.DOTALL,
     )
     if m:
         g = m.group(1) or m.group(2)
-        val = _to_float(g) if g else None
-        if val is not None and 20_000 <= val <= 200_000:
-            return val
+        return _sane_rto_mw(_to_float(g) if g else None)
     return None
 
 
