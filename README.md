@@ -10,7 +10,7 @@ HTTP and MCP request handlers only read a local SQLite store. A background polle
 
 | Tier | Route | What it returns |
 |------|--------|-----------------|
-| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /openapi.json`, `GET /swagger.json`, `GET /skill.md`, `GET /llms.txt`, `GET /.well-known/x402`, `GET /favicon.ico` | Health, service card, demo, OpenAPI aliases, agent discovery, favicon |
+| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /openapi.json`, `GET /swagger.json`, `GET /skill.md`, `GET /llms.txt`, `GET /llm.txt`, `GET /.well-known/x402`, `GET /favicon.ico` | Health, service card, demo, OpenAPI aliases, agent discovery, favicon |
 | L1 | `POST /v1/nowcast/latest` | Latest snapshot + trailing 24h stats |
 | L2 | `POST /v1/nowcast/history` | 1–72h history (native poll points) |
 | L3 | `POST /v1/nowcast/history/extended` | Up to 30-day history, hourly buckets, prior-period comparison |
@@ -73,11 +73,16 @@ Facilitators (verify/settle only; they do not change prices or pay-to addresses)
 
 Mainnet notes: these are real USDC transfers. Confirm each pay-to address can receive USDC on that chain. Start with small `PRICE_*`. Facilitator catalog listing is not guaranteed by a successful settle.
 
-## MCP
+## MCP client
 
-When `MCP_ENABLED=true`, a Streamable HTTP MCP façade is mounted at `MCP_PATH` (default `/mcp`).
+Connect a Streamable HTTP MCP client to `$PUBLIC_BASE_URL/mcp` (Railway: `https://pjm-nowcast-production.up.railway.app/mcp`). `MCP_ENABLED=true` by default. No API key for discovery.
 
-Tools: `service_info` and `demo_sample` (free); `nowcast_latest`, `nowcast_history`, `nowcast_history_extended` (same payment rules as HTTP).
+```bash
+curl -sS "$PUBLIC_BASE_URL/mcp" -H 'content-type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Free tools: `health`, `service_info`, `demo_sample`. Paid: `nowcast_latest` ($0.02), `nowcast_history` ($0.10), `nowcast_history_extended` ($0.25) — x402 exact USDC on Solana and Base. Unpaid paid-tool calls stay JSON-RPC 200 with `paymentStatus: "required"` and a `paymentRequired` challenge (same terms as HTTP 402). HTTP `POST /v1/nowcast/*` without payment is still 402.
 
 ## Railway
 
@@ -86,7 +91,7 @@ One service is the default:
 - Dockerfile in this repo, or Nixpacks + `pip install -r requirements.txt`
 - Start: `uvicorn pjm_nowcast.main:app --host 0.0.0.0 --port $PORT`
 - Persistent volume → `DATA_DIR` (SQLite lives there; 30-day rolling retention)
-- `TRUST_PROXY=true`, `ENV=production`, `PUBLIC_BASE_URL=https://your-host`
+- `TRUST_PROXY=true`, `ENV=production`, `PUBLIC_BASE_URL=https://pjm-nowcast-production.up.railway.app`
 - `RUN_POLLER=true`
 - Set public `PAY_TO_SVM_ADDRESS` / `PAY_TO_EVM_ADDRESS`
 

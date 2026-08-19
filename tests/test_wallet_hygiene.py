@@ -59,9 +59,13 @@ def test_free_routes_do_not_expose_wallets(walleted_client):
         "/swagger.json",
         "/skill.md",
         "/llms.txt",
+        "/llm.txt",
         "/.well-known/x402",
         "/.well-known/x402.json",
+        "/.well-known/llms.txt",
+        "/.well-known/llm.txt",
         "/v1/demo/sample",
+        "/mcp",
     ):
         r = walleted_client.get(path)
         assert r.status_code == 200, path

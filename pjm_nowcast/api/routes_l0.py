@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
 from pjm_nowcast.api.discovery import (
+    health_payload,
     llms_txt,
     load_demo_sample,
     robots_txt,
@@ -29,45 +29,7 @@ _ICON_TYPES = {
 
 @router.get("/health", summary="Health", tags=["free"])
 def health(request: Request) -> dict:
-    settings: Settings = request.app.state.settings
-    store = request.app.state.store
-    last = store.latest()
-    poll = store.last_poll()
-    now = datetime.now(timezone.utc)
-    data = None
-    status = "ok"
-    if last is None:
-        status = "unavailable"
-    else:
-        age = max(0, int((now - last.fetched_at).total_seconds()))
-        stale = age > settings.stale_after_seconds
-        data = {
-            "asOf": last.ts.isoformat(),
-            "polledAt": last.fetched_at.isoformat(),
-            "ageSeconds": age,
-            "maxAgeSeconds": settings.stale_after_seconds,
-            "stale": stale,
-            "observationCount": store.count(),
-        }
-        last_run = poll.get("lastRun")
-        last_failed = last_run is not None and int(last_run["ok"]) == 0
-        if stale or last_failed:
-            status = "degraded"
-    return {
-        "status": status,
-        "db": "ok",
-        "facilitators": settings.facilitator_status(),
-        "poller": {
-            "lastSuccessAt": poll.get("lastSuccessAt"),
-            "lastError": poll.get("lastError"),
-            "lastOk": (
-                None
-                if poll.get("lastRun") is None
-                else bool(int(poll["lastRun"]["ok"]))
-            ),
-        },
-        "data": data,
-    }
+    return health_payload(request.app.state.settings, request.app.state.store)
 
 
 @router.get("/", summary="Service card", tags=["free"])
@@ -105,6 +67,9 @@ def skill(request: Request):
 
 
 @router.get("/llms.txt", summary="LLM discovery index", tags=["free"])
+@router.get("/llm.txt", include_in_schema=False)
+@router.get("/.well-known/llms.txt", include_in_schema=False)
+@router.get("/.well-known/llm.txt", include_in_schema=False)
 def llms(request: Request):
     return PlainTextResponse(llms_txt(request.app.state.settings), media_type="text/plain")
 

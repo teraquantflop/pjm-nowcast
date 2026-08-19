@@ -80,23 +80,37 @@ def test_skill_md_aliases(client):
 
 def test_llms_robots_well_known(client):
     llms = client.get("/llms.txt")
+    llm = client.get("/llm.txt")
+    wk_llms = client.get("/.well-known/llms.txt")
+    wk_llm = client.get("/.well-known/llm.txt")
     robots = client.get("/robots.txt")
     wk = client.get("/.well-known/x402")
     wk_json = client.get("/.well-known/x402.json")
     assert llms.status_code == 200
+    assert llm.status_code == 200
+    assert llm.text == llms.text
+    assert wk_llms.text == llms.text
+    assert wk_llm.text == llms.text
     assert "/swagger.json" in llms.text
+    assert "/mcp" in llms.text
+    assert "price_vol" in llms.text
+    assert "Streamable HTTP" in llms.text
     assert robots.status_code == 200
     assert "Allow: /openapi.json" in robots.text
+    assert "Allow: /llm.txt" in robots.text
     assert wk.status_code == 200
     assert wk_json.status_code == 200
     assert wk.json() == wk_json.json()
     assert "payTo" not in wk.text
+    assert wk.json()["mcp"]["url"].endswith("/mcp")
     card = client.get("/").json()
     paths = {e["path"] for e in card["endpoints"]}
     assert "/swagger.json" in paths
     assert "/skill.md" in paths
     assert "/llms.txt" in paths
     assert "/.well-known/x402" in paths
+    assert "/mcp" in paths
+    assert "entropy" not in str(card).lower()
 
 
 def test_health_ok_after_seed(client, store):
