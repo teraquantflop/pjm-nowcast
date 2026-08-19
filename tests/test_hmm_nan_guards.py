@@ -2,13 +2,17 @@
 
 from __future__ import annotations
 
+import logging
 import math
+from copy import deepcopy
 from datetime import datetime
 from pathlib import Path
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
-from pjm_nowcast.model.hmm import predictive_summary, update
+import numpy as np
+
+from pjm_nowcast.model.hmm import ensure_jittered_init, predictive_summary, update
 from pjm_nowcast.model.histograms import render_deviation_pngs
 from pjm_nowcast.model.persistence import reset_hmm
 from pjm_nowcast.model.state import FeatureVector, Snapshot
@@ -112,10 +116,17 @@ def test_reset_hmm_keeps_history_and_zonal():
     )
     snap = reset_hmm(snap)
     assert snap.transition_counts is None
-    assert snap.emission_mean is None
-    assert snap.state_posteriors is None
+    assert snap.residual_abs_ewm is None
     assert snap.n_obs == 0
     assert snap.notes == "HMM reset"
+    assert snap.emission_mean is not None
+    assert snap.emission_var is not None
+    assert snap.state_posteriors is not None
+    assert not all(abs(m) < 1e-12 for row in snap.emission_mean for m in row)
+    assert not all(abs(v - 4.0) < 1e-12 for row in snap.emission_var for v in row)
+    posts = snap.state_posteriors
+    assert abs(sum(posts) - 1.0) < 1e-9
+    assert not all(abs(p - 0.2) < 1e-9 for p in posts)
     assert len(snap.history) == 1
     assert snap.spread_day == "2026-08-19"
     assert snap.spread_n_today == 7
@@ -127,10 +138,11 @@ def test_missing_price_vol_skips_dim():
     snap = Snapshot(n_states=5, n_obs=0)
     feats = _feats(price_vol=0.0, price_vol_missing=True)
     snap = update(snap, feats)
-    var = snap.emission_var
-    assert all(math.isfinite(v) for row in var for v in row)
-    for k in range(5):
-        assert var[k][3] == 4.0
+    var_dim3_first = [row[3] for row in snap.emission_var]
+    snap = update(snap, feats)
+    var_dim3_second = [row[3] for row in snap.emission_var]
+    assert all(math.isfinite(v) for v in var_dim3_first)
+    assert var_dim3_first == var_dim3_second
 
 
 def test_last_good_price_vol_is_used():
@@ -257,3 +269,76 @@ def test_poll_once_hmm_sidecar_writes_finite_snapshot(tmp_path):
     summary = predictive_summary(snap)
     assert summary.get("status") != "poisoned"
     store.close()
+
+
+def test_first_create_jitters_once(caplog):
+    caplog.set_level(logging.INFO)
+    snap = Snapshot(n_states=5, n_obs=0)
+    snap = update(snap, _feats())
+    assert caplog.text.count("HMM init jittered") == 1
+    posts = snap.state_posteriors
+    assert posts is not None
+    assert abs(sum(posts) - 1.0) < 1e-5
+    assert not all(abs(p - 0.2) < 1e-6 for p in posts)
+    assert not all(abs(m) < 1e-12 for row in snap.emission_mean for m in row)
+    snap = update(snap, _feats(price=41.0))
+    assert caplog.text.count("HMM init jittered") == 1
+
+
+def test_jittered_init_noop_when_finite():
+    mean = [[0.1 * (k + 1)] * 6 for k in range(5)]
+    var = [[2.0] * 6 for _ in range(5)]
+    post = [0.1, 0.2, 0.3, 0.25, 0.15]
+    snap = Snapshot(
+        n_states=5,
+        n_obs=5,
+        emission_mean=deepcopy(mean),
+        emission_var=deepcopy(var),
+        state_posteriors=list(post),
+    )
+    filled = ensure_jittered_init(snap, rng=np.random.default_rng(0))
+    assert filled is False
+    assert snap.emission_mean == mean
+    assert snap.emission_var == var
+    assert snap.state_posteriors == post
+
+
+def test_finite_snapshot_roundtrip_does_not_reinit(caplog):
+    caplog.set_level(logging.INFO)
+    post = [0.0289, 0.2311, 0.0815, 0.0959, 0.5625]
+    snap = Snapshot(
+        n_states=5,
+        n_obs=5,
+        transition_counts=[[0.5] * 5 for _ in range(5)],
+        emission_mean=[[0.2 * (k + 1)] * 6 for k in range(5)],
+        emission_var=[[3.5] * 6 for _ in range(5)],
+        state_posteriors=list(post),
+        residual_abs_ewm=[0.1] * 6,
+    )
+    loaded = Snapshot.from_dict(snap.to_dict())
+    assert loaded.state_posteriors == post
+    assert loaded.n_obs == 5
+    loaded = update(loaded, _feats())
+    assert "HMM init jittered" not in caplog.text
+    assert loaded.n_obs == 6
+    assert loaded.state_posteriors is not None
+    assert abs(sum(loaded.state_posteriors) - 1.0) < 1e-5
+
+
+def test_reset_then_ticks_are_uneven():
+    snap = Snapshot(
+        n_states=5,
+        n_obs=20,
+        transition_counts=[[1.0] * 5 for _ in range(5)],
+        emission_mean=[[0.0] * 6 for _ in range(5)],
+        emission_var=[[4.0] * 6 for _ in range(5)],
+        state_posteriors=[0.2] * 5,
+    )
+    snap = reset_hmm(snap)
+    for i in range(3):
+        snap = update(snap, _feats(price=40.0 + i, load_mw=100_000.0 + 200 * i))
+    posts = snap.state_posteriors
+    assert posts is not None
+    assert abs(sum(posts) - 1.0) < 1e-5
+    assert not all(abs(p - 0.2) < 1e-4 for p in posts)
+    assert snap.last_entropy < math.log(5) - 1e-6

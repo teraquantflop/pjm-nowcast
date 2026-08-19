@@ -6,8 +6,7 @@ import json
 import logging
 from pathlib import Path
 
-import numpy as np
-
+from pjm_nowcast.model.hmm import ensure_jittered_init
 from pjm_nowcast.model.params import FEATURE_DIM, N_STATES, TRANSITION_PSEUDO_COUNT
 from pjm_nowcast.model.state import Snapshot
 
@@ -64,6 +63,9 @@ def reset_hmm(snap: Snapshot) -> Snapshot:
     snap.last_entropy = 0.0
     snap.notes = "HMM reset"
     log.info("HMM reset")
+    ensure_jittered_init(snap)
+    if snap.state_posteriors:
+        snap.last_entropy = _entropy(snap.state_posteriors)
     return snap
 
 
@@ -73,23 +75,23 @@ def _diffuse_prior() -> Snapshot:
     trans = [[TRANSITION_PSEUDO_COUNT for _ in range(K)] for _ in range(K)]
     for i in range(K):
         trans[i][i] += 1.0
-    rng = np.random.default_rng()
-    em_mean = rng.normal(0.0, 0.35, size=(K, D)).tolist()
-    em_var = [[4.0 for _ in range(D)] for _ in range(K)]
-    post = [1.0 / K for _ in range(K)]
-    return Snapshot(
+    snap = Snapshot(
         version=2,
         n_obs=0,
         n_states=K,
         transition_counts=trans,
-        emission_mean=em_mean,
-        emission_var=em_var,
-        state_posteriors=post,
+        emission_mean=None,
+        emission_var=None,
+        state_posteriors=None,
         residual_abs_ewm=[0.0 for _ in range(D)],
-        last_entropy=_entropy(post),
+        last_entropy=0.0,
         notes="diffuse prior",
         history=[],
     )
+    ensure_jittered_init(snap)
+    if snap.state_posteriors:
+        snap.last_entropy = _entropy(snap.state_posteriors)
+    return snap
 
 
 def _entropy(probs) -> float:

@@ -110,18 +110,46 @@ def _price_vol_usable(feats: FeatureVector) -> bool:
     )
 
 
+def ensure_jittered_init(
+    snap: Snapshot, rng: np.random.Generator | None = None
+) -> bool:
+    """Fill missing emission_mean / emission_var / state_posteriors.
+
+    Init / reset only. If an array already exists, leave it (even if the
+    caller will sanitize cells later). Transition prior is not touched.
+    """
+    K = snap.n_states or N_STATES
+    D = FEATURE_DIM
+    created = False
+    if (
+        snap.emission_mean is None
+        or snap.emission_var is None
+        or snap.state_posteriors is None
+    ):
+        if rng is None:
+            rng = np.random.default_rng()
+        if snap.emission_mean is None:
+            snap.emission_mean = rng.normal(0.0, 0.5, size=(K, D)).tolist()
+            created = True
+        if snap.emission_var is None:
+            var = rng.uniform(3.0, 5.0, size=(K, D))
+            snap.emission_var = np.maximum(var, EMISSION_VAR_FLOOR).tolist()
+            created = True
+        if snap.state_posteriors is None:
+            snap.state_posteriors = rng.dirichlet(np.ones(K)).tolist()
+            created = True
+    if created:
+        log.info("HMM init jittered")
+    return created
+
+
 def update(snap: Snapshot, feats: FeatureVector) -> Snapshot:
     K = snap.n_states or N_STATES
     D = FEATURE_DIM
 
     if snap.transition_counts is None:
         snap.transition_counts = [[TRANSITION_PSEUDO_COUNT] * K for _ in range(K)]
-    if snap.emission_mean is None:
-        snap.emission_mean = [[0.0] * D for _ in range(K)]
-    if snap.emission_var is None:
-        snap.emission_var = [[4.0] * D for _ in range(K)]
-    if snap.state_posteriors is None:
-        snap.state_posteriors = [1.0 / K] * K
+    ensure_jittered_init(snap)
     if snap.residual_abs_ewm is None:
         snap.residual_abs_ewm = [0.0] * D
 
