@@ -9,6 +9,7 @@ FORBIDDEN = {
     "httpx",
     "pjm_nowcast.ingest",
     "pjm_nowcast.poller",
+    "pjm_nowcast.model",
 }
 
 SAFE_TREES = [
@@ -42,7 +43,12 @@ def test_handlers_do_not_import_ingest_or_http_clients():
             imported = _imports(path)
             hits = imported & FORBIDDEN
             # also catch from pjm_nowcast.ingest import X
-            if any(name.startswith("pjm_nowcast.ingest") or name.startswith("pjm_nowcast.poller") for name in imported):
+            if any(
+                name.startswith("pjm_nowcast.ingest")
+                or name.startswith("pjm_nowcast.poller")
+                or name.startswith("pjm_nowcast.model")
+                for name in imported
+            ):
                 hits = hits | {"pjm_nowcast.ingest"}
             if hits:
                 offenders.append((str(path.relative_to(ROOT.parent)), sorted(hits)))

@@ -18,6 +18,10 @@ def main() -> None:
         format="%(asctime)s %(levelname)-7s %(name)s %(message)s",
         stream=sys.stdout,
     )
+    if "--reset-hmm" in sys.argv:
+        logging.getLogger("pjm_nowcast.poller").info(
+            "--reset-hmm: will drop HMM arrays on this start"
+        )
     store = Store(settings.database_path)
     stop = asyncio.Event()
 

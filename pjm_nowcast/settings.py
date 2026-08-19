@@ -51,6 +51,10 @@ class Settings(BaseSettings):
     stale_after_seconds: int = 10800
     zonal_zones: str = "BGE,COMED,DOM,PEPCO,PSEG,JCPL"
     min_zones_for_spread: int = 4
+    spread_k: float = 1.25
+    spread_abs_usd: float = 15.0
+    snapshot_path: Path | None = None
+    pjm_nowcast_reset_hmm: bool = False
 
     pay_to_svm_address: str = ""
     pay_to_evm_address: str = ""
@@ -104,6 +108,8 @@ class Settings(BaseSettings):
             object.__setattr__(
                 self, "database_path", self.data_dir / "pjm-nowcast.sqlite"
             )
+        if self.snapshot_path is None:
+            object.__setattr__(self, "snapshot_path", self.data_dir / "snapshot.json")
         if self.env == "production":
             if self.x402_disabled:
                 raise RuntimeError(

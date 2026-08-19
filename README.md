@@ -94,6 +94,34 @@ Two-process alternative: web with `RUN_POLLER=false` plus a worker `python -m pj
 
 If upstream data is unavailable the API stays up and serves the last stored sample with `stale: true`, or `503 data_unavailable` if the store is empty.
 
+### HMM sidecar reset (do not delete `snapshot.json`)
+
+The poller keeps an internal HMM in `$DATA_DIR/snapshot.json` (default `./var/snapshot.json`). That file is **not** served on HTTP or MCP. One NaN in the emission vector used to poison log-likelihoods, persist NaN posteriors, and reload poison on every restart.
+
+If logs show `HMM poisoned — reset`, `entropy=nan`, or `posteriors=[nan,…]`, **do not** delete `snapshot.json` by hand. That would also drop zonal day stats and the HMM history ring. One-shot reset drops transition/emission/posterior/residual arrays only (`n_obs` is the HMM warm-start counter and goes to 0). Scrape SQLite, ewm, history, and today’s spread min/max are kept.
+
+**Backup → reset → one healthy tick → unset.**
+
+Local:
+
+```bash
+cp "$DATA_DIR/snapshot.json" "$DATA_DIR/snapshot.json.bak"   # optional
+python -m pjm_nowcast.poller --reset-hmm
+# equivalent: PJM_NOWCAST_RESET_HMM=1 python -m pjm_nowcast.poller
+```
+
+Confirm a log line `HMM reset`, then a healthy tick (finite entropy, five posteriors summing to 1, `price_vol` either `n/a` with `price_vol_missing=True` until the window fills or a value `>0`). Then start normally **without** the flag.
+
+Railway (web process with `RUN_POLLER=true` is enough; no need to delete the volume):
+
+1. Variables → add `PJM_NOWCAST_RESET_HMM=1` (do not commit it).
+2. Redeploy / restart once.
+3. In logs: `HMM reset`, then a healthy tick like  
+   `HMM entropy=1.609 posteriors=[0.2, 0.2, 0.2, 0.2, 0.2] n_obs=1 price_vol=n/a price_vol_missing=True notes=k*=0`
+4. **Delete** the variable so the next restart does not wipe HMM arrays again.
+
+Leaving `PJM_NOWCAST_RESET_HMM=1` set will reset on every process start. `price_vol` is rolling realized LMP std in $/MWh, not annualized Black vol; `<=0` or non-finite is missing and is not written as `0.0` into the emission vector.
+
 ## Configuration
 
 See `.env.example`. All runtime state is under `DATA_DIR` / `DATABASE_PATH` (working directory, not a laptop home path).
