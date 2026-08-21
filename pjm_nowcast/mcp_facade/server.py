@@ -11,6 +11,8 @@ from fastapi.responses import JSONResponse
 from pjm_nowcast import DISCLAIMER, __version__
 from pjm_nowcast.api.discovery import health_payload, load_demo_sample, mcp_mount, service_card
 from pjm_nowcast.payments.gate import payment_required_payload
+from pjm_nowcast.payments.optionbook import HEADER as OPTIONBOOK_HEADER
+from pjm_nowcast.payments.optionbook import header_matches
 from pjm_nowcast.payments.routes import price_for
 from pjm_nowcast.settings import Settings
 from pjm_nowcast.stats.assemble import assemble_history, assemble_latest
@@ -293,8 +295,12 @@ def _handle(request: Request, settings: Settings, msg: dict[str, Any]) -> dict[s
     return _err(mid, -32601, f"Method not found: {method}")
 
 
-def _has_mcp_payment(request: Request, params: dict[str, Any]) -> bool:
+def _has_mcp_payment(
+    request: Request, settings: Settings, params: dict[str, Any]
+) -> bool:
     headers = {k.lower(): v for k, v in request.headers.items()}
+    if header_matches(settings.optionbook_id, headers.get(OPTIONBOOK_HEADER)):
+        return True
     if any(headers.get(h) for h in ("payment-signature", "x-payment", "x-payment-signature")):
         return True
     meta = params.get("_meta") or {}
@@ -315,7 +321,7 @@ def _call_tool(request: Request, settings: Settings, params: dict[str, Any]) -> 
         return _text_result({"error": "unknown_tool", "name": name}, is_error=True)
 
     if tool.get("paid") and not settings.x402_disabled:
-        if not _has_mcp_payment(request, params):
+        if not _has_mcp_payment(request, settings, params):
             path = tool["http_path"]
             required = payment_required_payload(settings, path)
             return _text_result(

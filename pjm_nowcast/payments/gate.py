@@ -19,6 +19,8 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from pjm_nowcast import DISCLAIMER
 from pjm_nowcast.db.store import Store
 from pjm_nowcast.payments.client_ip import client_ip
+from pjm_nowcast.payments.optionbook import HEADER as OPTIONBOOK_HEADER
+from pjm_nowcast.payments.optionbook import header_matches
 from pjm_nowcast.payments.rate_limit import TokenBucket
 from pjm_nowcast.payments.routes import (
     BASE_NETWORK,
@@ -71,6 +73,7 @@ class PaymentGateMiddleware:
         )
 
         paid = match_paid_path(path) if method in {"GET", "POST"} else None
+        optionbook = _optionbook_client(self.settings, headers)
 
         # Unpaid probes on paid paths (GET or POST) return 402 before body
         # validation and do not consume the rate-limit bucket so scanners
@@ -79,6 +82,7 @@ class PaymentGateMiddleware:
             paid
             and not self.settings.x402_disabled
             and not _has_payment(headers)
+            and not optionbook
         ):
             if method == "GET":
                 await _send_402(send, self.settings, paid)
@@ -378,6 +382,10 @@ def _header_map(scope: Scope) -> dict[str, str]:
 
 def _has_payment(headers: dict[str, str]) -> bool:
     return any(headers.get(h) for h in PAYMENT_HEADERS)
+
+
+def _optionbook_client(settings: Settings, headers: dict[str, str]) -> bool:
+    return header_matches(settings.optionbook_id, headers.get(OPTIONBOOK_HEADER))
 
 
 def _peer_host(scope: Scope) -> str:

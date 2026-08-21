@@ -90,6 +90,8 @@ class Settings(BaseSettings):
     # Test / local only. Production start fails if true.
     x402_disabled: bool = False
 
+    optionbook_id: str = ""
+
     @field_validator("mcp_path")
     @classmethod
     def _slash_path(cls, v: str) -> str:
