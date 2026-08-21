@@ -6,14 +6,11 @@ import logging
 import math
 from copy import deepcopy
 from datetime import datetime
-from pathlib import Path
-from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 import numpy as np
 
 from pjm_nowcast.model.hmm import ensure_jittered_init, predictive_summary, update
-from pjm_nowcast.model.histograms import render_deviation_pngs
 from pjm_nowcast.model.persistence import reset_hmm
 from pjm_nowcast.model.state import FeatureVector, Snapshot
 from pjm_nowcast.model.zonal import update_zonal_and_peak
@@ -173,30 +170,6 @@ def test_abs_floor_flags_spread_37():
     assert snap.zonal_spread >= 30.0
     assert snap.last_high_spread is True
     assert snap.spread_high_count_today == 1
-
-
-def test_all_nan_load_skips_load_hist(tmp_path):
-    now = datetime.now(ET)
-    history = [
-        {"ts": now.isoformat(), "load_mw": NAN, "price": 40.0 + i} for i in range(4)
-    ]
-    snap = Snapshot(history=history, n_obs=4)
-    feats = _feats(ts=now, price=44.0, load_mw=NAN)
-    with patch("pjm_nowcast.model.histograms.PLOTS_DIR", Path(tmp_path)):
-        summary = render_deviation_pngs(snap, feats)
-    assert summary["load_path"] is None
-
-
-def test_all_nan_both_series_no_png(tmp_path):
-    now = datetime.now(ET)
-    history = [{"ts": now.isoformat(), "load_mw": NAN, "price": NAN} for _ in range(4)]
-    snap = Snapshot(history=history, n_obs=4)
-    feats = _feats(ts=now, load_mw=NAN, price=NAN)
-    with patch("pjm_nowcast.model.histograms.PLOTS_DIR", Path(tmp_path)):
-        summary = render_deviation_pngs(snap, feats)
-    assert summary["load_path"] is None
-    assert summary["price_path"] is None
-    assert list(Path(tmp_path).glob("*.png")) == []
 
 
 def test_poisoned_summary_status():

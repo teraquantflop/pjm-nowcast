@@ -53,14 +53,8 @@ def _hmm_tick(
 ) -> None:
     from pjm_nowcast.ingest.features import build_features
     from pjm_nowcast.model.hmm import predictive_summary, update
-    from pjm_nowcast.model.histograms import render_deviation_pngs
     from pjm_nowcast.model.persistence import save_snapshot
 
-    plots = Path(settings.data_dir) / "plots"
-    plots.mkdir(parents=True, exist_ok=True)
-    import pjm_nowcast.model.histograms as histmod
-
-    histmod.PLOTS_DIR = plots
     if store is not None:
         prior_n, prior_vol = _hydrate_price_vol_window(store, exclude_id=exclude_id)
         log.info(
@@ -74,7 +68,6 @@ def _hmm_tick(
     update(snap, feats)
     save_snapshot(Path(settings.snapshot_path), snap)
     summary = predictive_summary(snap)
-    render_deviation_pngs(snap, feats)
     _log_hmm(summary, feats)
 
 
