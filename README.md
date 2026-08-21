@@ -90,7 +90,7 @@ One service is the default:
 
 - Dockerfile in this repo, or Nixpacks + `pip install -r requirements.txt`
 - Start: `uvicorn pjm_nowcast.main:app --host 0.0.0.0 --port $PORT`
-- Persistent volume → `DATA_DIR` (SQLite lives there; 30-day rolling retention)
+- Persistent volume mounted at `/data`, and `DATA_DIR=/data` (SQLite is `$DATA_DIR/pjm-nowcast.sqlite`, 30-day rolling retention). If logs show `db=var/pjm-nowcast.sqlite` or `n_store=0` on boot, the DB is on the ephemeral image, not the volume. Production remaps a relative `./var` to `/data`.
 - `TRUST_PROXY=true`, `ENV=production`, `PUBLIC_BASE_URL=https://pjm-nowcast-production.up.railway.app`
 - `RUN_POLLER=true`
 - Set public `PAY_TO_SVM_ADDRESS` / `PAY_TO_EVM_ADDRESS`

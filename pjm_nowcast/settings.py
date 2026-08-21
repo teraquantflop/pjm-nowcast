@@ -17,6 +17,9 @@ FORBIDDEN_KEY_NAMES = (
     "ETH_PRIVATE_KEY",
 )
 
+# Container volume. Relative ./var is wiped on every deploy/restart.
+_PRODUCTION_DATA_DIR = Path("/data")
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -106,12 +109,34 @@ class Settings(BaseSettings):
                     f"{name} must not be set on the server process. "
                     "Client signing keys stay in a local test-client .env only."
                 )
-        if self.database_path is None:
-            object.__setattr__(
-                self, "database_path", self.data_dir / "pjm-nowcast.sqlite"
-            )
-        if self.snapshot_path is None:
-            object.__setattr__(self, "snapshot_path", self.data_dir / "snapshot.json")
+        data_dir = Path(self.data_dir)
+        if self.env == "production" and not data_dir.is_absolute():
+            # Dockerfile volume is /data. ./var is the image workdir and resets
+            # on every reboot (n_store=0, then one poll → n_store=1).
+            data_dir = _PRODUCTION_DATA_DIR
+        data_dir = data_dir.expanduser()
+        if not data_dir.is_absolute():
+            data_dir = Path.cwd() / data_dir
+        object.__setattr__(self, "data_dir", data_dir)
+
+        db = self.database_path
+        if db is None:
+            db = data_dir / "pjm-nowcast.sqlite"
+        else:
+            db = Path(db).expanduser()
+            if not db.is_absolute():
+                db = data_dir / db
+        object.__setattr__(self, "database_path", db)
+
+        snap = self.snapshot_path
+        if snap is None:
+            snap = data_dir / "snapshot.json"
+        else:
+            snap = Path(snap).expanduser()
+            if not snap.is_absolute():
+                snap = data_dir / snap
+        object.__setattr__(self, "snapshot_path", snap)
+
         if self.env == "production":
             if self.x402_disabled:
                 raise RuntimeError(

@@ -32,7 +32,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             from pjm_nowcast.poller.job import run_poller
 
             poller_task = asyncio.create_task(run_poller(store, settings, stop))
-            log.info("Background poller task started")
+            log.info(
+                "Background poller task started data_dir=%s db=%s snapshot=%s",
+                settings.data_dir,
+                settings.database_path,
+                settings.snapshot_path,
+            )
         app.state.stop = stop
         app.state.poller_task = poller_task
         try:
