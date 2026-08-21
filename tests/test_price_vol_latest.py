@@ -152,9 +152,10 @@ def test_recent_rto_lmps_oldest_first_skips_null(store):
     seed_observation(store, hours_ago=3.0, rto_lmp=10.0)
     seed_observation(store, hours_ago=2.0, rto_lmp=None)
     seed_observation(store, hours_ago=1.0, rto_lmp=12.0)
-    seed_observation(store, hours_ago=0.0, rto_lmp=11.0)
+    last_id = seed_observation(store, hours_ago=0.0, rto_lmp=11.0)
     assert store.recent_rto_lmps(8) == [10.0, 12.0, 11.0]
     assert store.recent_rto_lmps(2) == [12.0, 11.0]
+    assert store.recent_rto_lmps(8, exclude_id=last_id) == [10.0, 12.0]
 
 
 def test_restore_price_history_from_sqlite(store):

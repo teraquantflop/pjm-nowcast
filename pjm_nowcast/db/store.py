@@ -146,20 +146,24 @@ class Store:
         with self._lock:
             return int(self._conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0])
 
-    def recent_rto_lmps(self, n: int = 8) -> list[float]:
+    def recent_rto_lmps(
+        self, n: int = 8, *, exclude_id: int | None = None
+    ) -> list[float]:
         """Last n finite RTO LMP prints, oldest first (poller window order)."""
         if n <= 0:
             return []
+        sql = """
+            SELECT rto_lmp FROM observations
+            WHERE rto_lmp IS NOT NULL
+        """
+        params: list[Any] = []
+        if exclude_id is not None:
+            sql += " AND id != ?"
+            params.append(int(exclude_id))
+        sql += " ORDER BY ts DESC, id DESC LIMIT ?"
+        params.append(int(n))
         with self._lock:
-            rows = self._conn.execute(
-                """
-                SELECT rto_lmp FROM observations
-                WHERE rto_lmp IS NOT NULL
-                ORDER BY ts DESC, id DESC
-                LIMIT ?
-                """,
-                (int(n),),
-            ).fetchall()
+            rows = self._conn.execute(sql, params).fetchall()
         out: list[float] = []
         for row in reversed(rows):
             value = _f(row["rto_lmp"])

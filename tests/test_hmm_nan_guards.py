@@ -271,6 +271,38 @@ def test_poll_once_hmm_sidecar_writes_finite_snapshot(tmp_path):
     store.close()
 
 
+def test_hmm_tick_restores_price_vol_from_sqlite_on_restart(tmp_path):
+    from pjm_nowcast.db.store import Store
+    from pjm_nowcast.ingest import features as featmod
+    from pjm_nowcast.poller.job import poll_once
+    from pjm_nowcast.stats.price_vol import rms_price_vol
+    from tests.conftest import seed_observation
+
+    settings = Settings(
+        mock_mode=True,
+        run_poller=False,
+        database_path=tmp_path / "p.sqlite",
+        data_dir=tmp_path,
+        snapshot_path=tmp_path / "snapshot.json",
+        env="test",
+        x402_disabled=True,
+    )
+    store = Store(settings.database_path)
+    prior = [20.0, 22.0, 19.0, 25.0]
+    for i, px in enumerate(prior):
+        seed_observation(store, hours_ago=float(len(prior) - i), rto_lmp=px)
+    featmod._price_history.clear()
+    snap = Snapshot(n_states=5)
+    oid = poll_once(store, settings, retry_delays=(0,), snap=snap)
+    assert oid is not None
+    assert snap.last_features is not None
+    assert snap.last_features.price_vol_missing is False
+    assert snap.last_features.price_vol == rms_price_vol(
+        prior + [snap.last_features.price]
+    )
+    store.close()
+
+
 def test_first_create_jitters_once(caplog):
     caplog.set_level(logging.INFO)
     snap = Snapshot(n_states=5, n_obs=0)

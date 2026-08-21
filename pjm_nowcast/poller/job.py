@@ -27,7 +27,30 @@ def want_hmm_reset(settings: Settings, argv: list[str] | None = None) -> bool:
     return bool(settings.pjm_nowcast_reset_hmm)
 
 
-def _hmm_tick(settings: Settings, snap, row: dict) -> None:
+def _hydrate_price_vol_window(
+    store: Store, *, exclude_id: int | None = None
+) -> tuple[int, float | None]:
+    """Rebuild the in-memory LMP deque from SQLite (oldest first).
+
+    When exclude_id is the row just inserted, build_features will append that
+    print so the window is last-8 including current without doubling it.
+    """
+    from pjm_nowcast.ingest.features import restore_price_history
+    from pjm_nowcast.stats.price_vol import PRICE_VOL_WINDOW, rms_price_vol
+
+    lmps = store.recent_rto_lmps(PRICE_VOL_WINDOW, exclude_id=exclude_id)
+    n_win = restore_price_history(lmps)
+    return n_win, rms_price_vol(lmps)
+
+
+def _hmm_tick(
+    settings: Settings,
+    snap,
+    row: dict,
+    store: Store | None = None,
+    *,
+    exclude_id: int | None = None,
+) -> None:
     from pjm_nowcast.ingest.features import build_features
     from pjm_nowcast.model.hmm import predictive_summary, update
     from pjm_nowcast.model.histograms import render_deviation_pngs
@@ -38,6 +61,15 @@ def _hmm_tick(settings: Settings, snap, row: dict) -> None:
     import pjm_nowcast.model.histograms as histmod
 
     histmod.PLOTS_DIR = plots
+    if store is not None:
+        prior_n, prior_vol = _hydrate_price_vol_window(store, exclude_id=exclude_id)
+        log.info(
+            "Hydrated LMP vol window from sqlite db=%s n_store=%s prior_n=%s prior_price_vol=%s",
+            settings.database_path,
+            store.count(),
+            prior_n,
+            f"{prior_vol:.4f}" if prior_vol is not None else "n/a",
+        )
     feats = build_features(row, snap.last_features)
     update(snap, feats)
     save_snapshot(Path(settings.snapshot_path), snap)
@@ -129,7 +161,13 @@ def poll_once(
             store.prune(settings.retention_days)
             if snap is not None:
                 try:
-                    _hmm_tick(settings, snap, row)
+                    _hmm_tick(
+                        settings,
+                        snap,
+                        row,
+                        store,
+                        exclude_id=oid,
+                    )
                 except Exception:
                     log.exception("HMM tick failed; scrape row was still written")
             store.finish_poll_run(
@@ -158,17 +196,15 @@ def poll_once(
 
 async def run_poller(store: Store, settings: Settings, stop: asyncio.Event) -> None:
     """Supervised loop. Failures never kill the API process."""
-    from pjm_nowcast.ingest.features import restore_price_history
     from pjm_nowcast.model.persistence import load_snapshot, reset_hmm, save_snapshot
-    from pjm_nowcast.stats.price_vol import PRICE_VOL_WINDOW, rms_price_vol
 
     snap_path = Path(settings.snapshot_path)
     snap = load_snapshot(snap_path)
-    lmps = store.recent_rto_lmps(PRICE_VOL_WINDOW)
-    n_win = restore_price_history(lmps)
-    restored = rms_price_vol(lmps)
+    n_win, restored = _hydrate_price_vol_window(store)
     log.info(
-        "Restored LMP vol window from sqlite n=%s price_vol=%s",
+        "Restored LMP vol window from sqlite db=%s n_store=%s window=%s price_vol=%s",
+        settings.database_path,
+        store.count(),
         n_win,
         f"{restored:.4f}" if restored is not None else "n/a",
     )
