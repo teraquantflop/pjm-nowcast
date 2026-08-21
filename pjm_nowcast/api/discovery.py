@@ -50,9 +50,12 @@ AGENT_NOTES = (
     "with asOf/polledAt/stale. Trailing mean/std is a mix of the stored sample, "
     "not a live forecast F. Do not treat that mix as live F while entropy is near "
     "ln(5) (~1.609); the internal mixture is then uninformative. "
-    "price_vol (poller logs only, not a public field) is rolling realized LMP std "
-    "in $/MWh, not annualized Black vol. high-spread is an internal zonal flag, "
-    "not returned on HTTP/MCP nowcast bodies."
+    "POST /v1/nowcast/latest and MCP nowcast_latest also return last price_vol "
+    "($/MWh rolling realized LMP std over a short print window, not annualized "
+    "Black vol, not rtoLmp.std / mix std) and price_vol_missing. When vol is "
+    "missing, non-finite, or <= 0, price_vol_missing is true and price_vol is "
+    "null. high-spread is an internal zonal flag, not returned on HTTP/MCP "
+    "nowcast bodies."
 )
 
 
@@ -280,7 +283,10 @@ def service_card(settings: Settings) -> dict:
                 "path": "/v1/nowcast/latest",
                 "price": settings.price_l1,
                 "description": (
-                    "Latest snapshot plus trailing 24h descriptive stats. " + output_fields
+                    "Latest snapshot plus trailing 24h descriptive stats. "
+                    "Also last price_vol ($/MWh rolling realized LMP std, not Black vol) "
+                    "and price_vol_missing. "
+                    + output_fields
                 ),
                 "inputSchema": latest_schema,
                 "exampleRequest": {"families": ["rto_lmp", "zonal_spread", "rto_load"]},

@@ -179,6 +179,15 @@ def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, A
             "rtoLmp": {"type": "object"},
             "zonalSpread": {"type": "object"},
             "rtoLoad": {"type": "object"},
+            "price_vol": {
+                "type": ["number", "null"],
+                "description": (
+                    "Latest only. Rolling realized LMP std in $/MWh "
+                    "(not annualized Black vol, not rtoLmp.std). "
+                    "Null when price_vol_missing is true."
+                ),
+            },
+            "price_vol_missing": {"type": "boolean"},
             "windowHours": {"type": "integer"},
             "resolution": {"type": "string"},
             "priorPeriod": {"type": "object"},

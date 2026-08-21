@@ -127,7 +127,9 @@ def tool_catalog(settings: Settings) -> list[dict[str, Any]]:
             "description": _paid_description(
                 settings,
                 "/v1/nowcast/latest",
-                "POST /v1/nowcast/latest. Latest stored snapshot plus trailing 24h stats. ",
+                "POST /v1/nowcast/latest. Latest stored snapshot plus trailing 24h stats. "
+                "Also top-level last price_vol ($/MWh rolling realized LMP std, not Black vol) "
+                "and price_vol_missing. ",
             ),
             "inputSchema": {
                 "type": "object",

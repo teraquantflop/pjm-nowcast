@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import math
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Iterable, Literal
 
 from pjm_nowcast import DISCLAIMER
@@ -151,6 +153,35 @@ def _hourly(points: list[dict[str, Any]], value_key: str = "value") -> list[dict
     return out
 
 
+def _price_vol_from_snapshot(settings: Settings) -> tuple[float | None, bool]:
+    """Last sticky price_vol from snapshot.json last_features only.
+
+    price_vol is rolling realized LMP std in $/MWh, not mix std / Black vol.
+    Reads plain JSON — does not import pjm_nowcast.model.
+    """
+    path = getattr(settings, "snapshot_path", None)
+    if path is None:
+        return None, True
+    try:
+        raw_text = Path(path).read_text(encoding="utf-8")
+        data = json.loads(raw_text)
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None, True
+    if not isinstance(data, dict):
+        return None, True
+    lf = data.get("last_features")
+    if not isinstance(lf, dict):
+        return None, True
+    flagged = bool(lf.get("price_vol_missing", False))
+    try:
+        vol = float(lf["price_vol"]) if lf.get("price_vol") is not None else None
+    except (TypeError, ValueError):
+        vol = None
+    if flagged or vol is None or not math.isfinite(vol) or vol <= 0.0:
+        return None, True
+    return vol, False
+
+
 def assemble_latest(
     store: Store,
     settings: Settings,
@@ -167,6 +198,9 @@ def assemble_latest(
         window = [last]
     fams = tuple(families) if families else ALL_FAMILIES
     body = envelope(last, len(window), settings, now=now)
+    vol, missing = _price_vol_from_snapshot(settings)
+    body["price_vol_missing"] = missing
+    body["price_vol"] = None if missing else vol
     if "rto_lmp" in fams:
         body["rtoLmp"] = _lmp_block(window)
     if "zonal_spread" in fams:
