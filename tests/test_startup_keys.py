@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from pjm_nowcast.db.store import Store
 from pjm_nowcast.settings import Settings
 
 
@@ -38,6 +39,46 @@ def test_development_keeps_relative_var_under_cwd(monkeypatch, tmp_path):
     s = Settings(env="development", data_dir="./var", run_poller=False, x402_disabled=True)
     assert s.data_dir == tmp_path / "var"
     assert s.database_path == tmp_path / "var" / "pjm-nowcast.sqlite"
+    assert s.snapshot_path == tmp_path / "var" / "snapshot.json"
+    assert s.database_path != s.data_dir
+    assert not s.database_path.is_dir() or not s.database_path.exists()
+
+
+def test_database_path_directory_is_not_used_as_sqlite_file(tmp_path):
+    volume = tmp_path / "data"
+    volume.mkdir()
+    s = Settings(
+        env="test",
+        data_dir=volume,
+        database_path=volume,
+        snapshot_path=volume,
+        run_poller=False,
+        x402_disabled=True,
+    )
+    assert s.data_dir == volume
+    assert s.database_path == volume / "pjm-nowcast.sqlite"
+    assert s.snapshot_path == volume / "snapshot.json"
+
+
+def test_store_opens_file_under_directory(tmp_path):
+    volume = tmp_path / "data"
+    volume.mkdir()
+    store = Store(volume)
+    try:
+        assert store.path == volume / "pjm-nowcast.sqlite"
+        assert store.path.is_file()
+        assert store.count() == 0
+    finally:
+        store.close()
+
+
+def test_store_mkdir_parents(tmp_path):
+    db = tmp_path / "nested" / "dir" / "pjm-nowcast.sqlite"
+    store = Store(db)
+    try:
+        assert db.is_file()
+    finally:
+        store.close()
 
 
 def test_production_requires_pay_to(monkeypatch):

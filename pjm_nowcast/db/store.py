@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import sqlite3
 import threading
@@ -10,8 +11,11 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from pjm_nowcast.settings import DB_FILENAME
+
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 SCHEMA_VERSION = 1
+log = logging.getLogger("pjm_nowcast.db")
 
 
 def _iso(dt: datetime) -> str:
@@ -46,13 +50,30 @@ class Observation:
 class Store:
     def __init__(self, path: Path) -> None:
         self.path = Path(path)
+        # DATA_DIR is a directory; never connect sqlite to the volume root.
+        try:
+            if self.path.exists() and self.path.is_dir():
+                self.path = self.path / DB_FILENAME
+        except OSError:
+            pass
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(
-            str(self.path),
-            check_same_thread=False,
-            isolation_level=None,
-        )
+        try:
+            self._conn = sqlite3.connect(
+                str(self.path),
+                check_same_thread=False,
+                isolation_level=None,
+            )
+        except sqlite3.OperationalError as exc:
+            parent = self.path.parent
+            log.error(
+                "unable to open database file path=%s is_dir=%s parent_exists=%s error=%s",
+                self.path,
+                self.path.is_dir() if self.path.exists() else False,
+                parent.exists(),
+                exc,
+            )
+            raise
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA foreign_keys=ON")

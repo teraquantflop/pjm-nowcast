@@ -19,6 +19,26 @@ FORBIDDEN_KEY_NAMES = (
 
 # Container volume. Relative ./var is wiped on every deploy/restart.
 _PRODUCTION_DATA_DIR = Path("/data")
+DB_FILENAME = "pjm-nowcast.sqlite"
+SNAPSHOT_FILENAME = "snapshot.json"
+
+
+def _file_under_data_dir(data_dir: Path, configured: Path | None, filename: str) -> Path:
+    """DATA_DIR is a directory. Never return DATA_DIR itself as the file path."""
+    default = data_dir / filename
+    if configured is None:
+        return default
+    path = Path(configured).expanduser()
+    if not path.is_absolute():
+        path = data_dir / path
+    if path == data_dir or path.name in {"", "."}:
+        return default
+    try:
+        if path.exists() and path.is_dir():
+            return default
+    except OSError:
+        pass
+    return path
 
 
 class Settings(BaseSettings):
@@ -118,24 +138,16 @@ class Settings(BaseSettings):
         if not data_dir.is_absolute():
             data_dir = Path.cwd() / data_dir
         object.__setattr__(self, "data_dir", data_dir)
-
-        db = self.database_path
-        if db is None:
-            db = data_dir / "pjm-nowcast.sqlite"
-        else:
-            db = Path(db).expanduser()
-            if not db.is_absolute():
-                db = data_dir / db
-        object.__setattr__(self, "database_path", db)
-
-        snap = self.snapshot_path
-        if snap is None:
-            snap = data_dir / "snapshot.json"
-        else:
-            snap = Path(snap).expanduser()
-            if not snap.is_absolute():
-                snap = data_dir / snap
-        object.__setattr__(self, "snapshot_path", snap)
+        object.__setattr__(
+            self,
+            "database_path",
+            _file_under_data_dir(data_dir, self.database_path, DB_FILENAME),
+        )
+        object.__setattr__(
+            self,
+            "snapshot_path",
+            _file_under_data_dir(data_dir, self.snapshot_path, SNAPSHOT_FILENAME),
+        )
 
         if self.env == "production":
             if self.x402_disabled:

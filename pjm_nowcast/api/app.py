@@ -22,6 +22,12 @@ log = logging.getLogger("pjm_nowcast")
 
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or Settings()
+    log.info(
+        "storage data_dir=%s db=%s snapshot=%s",
+        settings.data_dir,
+        settings.database_path,
+        settings.snapshot_path,
+    )
     store = Store(settings.database_path)
 
     @asynccontextmanager
@@ -32,12 +38,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             from pjm_nowcast.poller.job import run_poller
 
             poller_task = asyncio.create_task(run_poller(store, settings, stop))
-            log.info(
-                "Background poller task started data_dir=%s db=%s snapshot=%s",
-                settings.data_dir,
-                settings.database_path,
-                settings.snapshot_path,
-            )
+            log.info("Background poller task started")
         app.state.stop = stop
         app.state.poller_task = poller_task
         try:
