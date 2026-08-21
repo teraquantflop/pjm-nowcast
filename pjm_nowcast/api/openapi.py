@@ -182,8 +182,9 @@ def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, A
             "price_vol": {
                 "type": ["number", "null"],
                 "description": (
-                    "Latest only. Rolling realized LMP std in $/MWh "
-                    "(not annualized Black vol, not rtoLmp.std). "
+                    "Latest only. Rolling realized LMP std in $/MWh from the "
+                    "last 8 SQLite RTO LMP prints (RMS of successive diffs; "
+                    "not annualized Black vol, not rtoLmp.std). "
                     "Null when price_vol_missing is true."
                 ),
             },

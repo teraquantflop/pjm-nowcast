@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import sqlite3
 import threading
 from dataclasses import dataclass, field
@@ -144,6 +145,30 @@ class Store:
     def count(self) -> int:
         with self._lock:
             return int(self._conn.execute("SELECT COUNT(*) FROM observations").fetchone()[0])
+
+    def recent_rto_lmps(self, n: int = 8) -> list[float]:
+        """Last n finite RTO LMP prints, oldest first (poller window order)."""
+        if n <= 0:
+            return []
+        with self._lock:
+            rows = self._conn.execute(
+                """
+                SELECT rto_lmp FROM observations
+                WHERE rto_lmp IS NOT NULL
+                ORDER BY ts DESC, id DESC
+                LIMIT ?
+                """,
+                (int(n),),
+            ).fetchall()
+        out: list[float] = []
+        for row in reversed(rows):
+            value = _f(row["rto_lmp"])
+            if value is None:
+                continue
+            parsed = float(value)
+            if math.isfinite(parsed):
+                out.append(parsed)
+        return out
 
     def prune(self, retention_days: int, now: datetime | None = None) -> int:
         now = now or datetime.now(timezone.utc)

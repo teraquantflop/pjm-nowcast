@@ -8,12 +8,27 @@ from __future__ import annotations
 
 import math
 from collections import deque
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Deque, Optional
 
 from pjm_nowcast.model.state import FeatureVector
+from pjm_nowcast.stats.price_vol import PRICE_VOL_WINDOW, rms_price_vol
 
-_price_history: Deque[float] = deque(maxlen=8)
+_price_history: Deque[float] = deque(maxlen=PRICE_VOL_WINDOW)
+
+
+def restore_price_history(prices: Sequence[float]) -> int:
+    """Reload the rolling LMP window (oldest first). Returns window length."""
+    _price_history.clear()
+    for price in prices:
+        try:
+            parsed = float(price)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(parsed):
+            _price_history.append(parsed)
+    return len(_price_history)
 
 
 def _f(v) -> float:
@@ -41,16 +56,13 @@ def build_features(
 
     if math.isfinite(price):
         _price_history.append(price)
-    if len(_price_history) >= 3:
-        diffs = [
-            _price_history[i] - _price_history[i - 1]
-            for i in range(1, len(_price_history))
-        ]
-        price_vol = float(math.sqrt(sum(d * d for d in diffs) / len(diffs)))
-    else:
+    computed = rms_price_vol(list(_price_history))
+    if computed is None:
         price_vol = 0.0
-
-    price_vol_missing = (not math.isfinite(price_vol)) or price_vol <= 0.0
+        price_vol_missing = True
+    else:
+        price_vol = computed
+        price_vol_missing = False
     if price_vol_missing:
         prev_vol = previous.price_vol if previous is not None else None
         if prev_vol is not None and math.isfinite(prev_vol) and prev_vol > 0.0:

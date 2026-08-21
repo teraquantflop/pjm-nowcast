@@ -158,10 +158,20 @@ def poll_once(
 
 async def run_poller(store: Store, settings: Settings, stop: asyncio.Event) -> None:
     """Supervised loop. Failures never kill the API process."""
+    from pjm_nowcast.ingest.features import restore_price_history
     from pjm_nowcast.model.persistence import load_snapshot, reset_hmm, save_snapshot
+    from pjm_nowcast.stats.price_vol import PRICE_VOL_WINDOW, rms_price_vol
 
     snap_path = Path(settings.snapshot_path)
     snap = load_snapshot(snap_path)
+    lmps = store.recent_rto_lmps(PRICE_VOL_WINDOW)
+    n_win = restore_price_history(lmps)
+    restored = rms_price_vol(lmps)
+    log.info(
+        "Restored LMP vol window from sqlite n=%s price_vol=%s",
+        n_win,
+        f"{restored:.4f}" if restored is not None else "n/a",
+    )
     if want_hmm_reset(settings):
         reset_hmm(snap)
         save_snapshot(snap_path, snap)

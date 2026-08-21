@@ -13,6 +13,7 @@ from pjm_nowcast import DISCLAIMER
 from pjm_nowcast.db.store import Observation, Store
 from pjm_nowcast.settings import Settings
 from pjm_nowcast.stats.descriptive import spread_of, summarize
+from pjm_nowcast.stats.price_vol import PRICE_VOL_WINDOW, price_vol_from_lmps
 
 Family = Literal["rto_lmp", "zonal_spread", "rto_load"]
 ALL_FAMILIES: tuple[Family, ...] = ("rto_lmp", "zonal_spread", "rto_load")
@@ -182,6 +183,23 @@ def _price_vol_from_snapshot(settings: Settings) -> tuple[float | None, bool]:
     return vol, False
 
 
+def _price_vol_from_sqlite(store: Store) -> tuple[float | None, bool]:
+    return price_vol_from_lmps(store.recent_rto_lmps(PRICE_VOL_WINDOW))
+
+
+def resolve_price_vol(store: Store, settings: Settings) -> tuple[float | None, bool]:
+    """Sticky last price_vol for /latest.
+
+    Prefer RMS of the last 8 SQLite RTO LMP diffs (same as the poller) so a
+    restart restores vol from the observation store. Fall back to snapshot.json
+    last_features only when SQLite cannot form a window.
+    """
+    vol, missing = _price_vol_from_sqlite(store)
+    if not missing:
+        return vol, False
+    return _price_vol_from_snapshot(settings)
+
+
 def assemble_latest(
     store: Store,
     settings: Settings,
@@ -198,7 +216,7 @@ def assemble_latest(
         window = [last]
     fams = tuple(families) if families else ALL_FAMILIES
     body = envelope(last, len(window), settings, now=now)
-    vol, missing = _price_vol_from_snapshot(settings)
+    vol, missing = resolve_price_vol(store, settings)
     body["price_vol_missing"] = missing
     body["price_vol"] = None if missing else vol
     if "rto_lmp" in fams:

@@ -51,11 +51,13 @@ AGENT_NOTES = (
     "not a live forecast F. Do not treat that mix as live F while entropy is near "
     "ln(5) (~1.609); the internal mixture is then uninformative. "
     "POST /v1/nowcast/latest and MCP nowcast_latest also return last price_vol "
-    "($/MWh rolling realized LMP std over a short print window, not annualized "
-    "Black vol, not rtoLmp.std / mix std) and price_vol_missing. When vol is "
-    "missing, non-finite, or <= 0, price_vol_missing is true and price_vol is "
-    "null. high-spread is an internal zonal flag, not returned on HTTP/MCP "
-    "nowcast bodies."
+    "($/MWh rolling realized LMP std over the last 8 prints, RMS of successive "
+    "diffs — same formula as the poller, not annualized Black vol, not "
+    "rtoLmp.std / mix std) and price_vol_missing. After restart, last price_vol "
+    "is rebuilt from those SQLite RTO LMP diffs when the in-memory window is "
+    "empty. When vol is missing, non-finite, or <= 0, price_vol_missing is true "
+    "and price_vol is null. high-spread is an internal zonal flag, not returned "
+    "on HTTP/MCP nowcast bodies."
 )
 
 
