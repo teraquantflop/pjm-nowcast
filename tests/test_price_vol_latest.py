@@ -25,6 +25,18 @@ def _write_features(path: Path, *, price_vol, price_vol_missing: bool) -> None:
     )
 
 
+def test_latest_includes_mix_sidecar(client, store, settings):
+    seed_observation(store, hours_ago=0.1, rto_lmp=30.0)
+    mix_path = Path(settings.data_dir) / "mix.json"
+    mix_path.write_text(
+        '{"mix_std_price": 8.5, "n_obs": 11, "status": "ok"}',
+        encoding="utf-8",
+    )
+    body = client.post("/v1/nowcast/latest", json={}).json()
+    assert body["mix_std_price"] == 8.5
+    assert body["mix_n_obs"] == 11
+
+
 def test_latest_includes_snapshot_price_vol(client, store, settings):
     seed_observation(store, hours_ago=1.0, rto_lmp=20.0)
     seed_observation(store, hours_ago=0.1, rto_lmp=40.0)
@@ -97,6 +109,8 @@ def test_history_does_not_include_price_vol(client, store, settings):
     body = r.json()
     assert "price_vol" not in body
     assert "price_vol_missing" not in body
+    assert "mix_std_price" not in body
+    assert "mix_n_obs" not in body
 
 
 def test_assemble_latest_helper_reads_plain_json(store, settings, tmp_path):

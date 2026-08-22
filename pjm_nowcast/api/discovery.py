@@ -56,7 +56,9 @@ AGENT_NOTES = (
     "rtoLmp.std / mix std) and price_vol_missing. After restart, last price_vol "
     "is rebuilt from those SQLite RTO LMP diffs when the in-memory window is "
     "empty. When vol is missing, non-finite, or <= 0, price_vol_missing is true "
-    "and price_vol is null. high-spread is an internal zonal flag, not returned "
+    "and price_vol is null. Latest also returns mix_std_price ($/MWh HMM mixture "
+    "std of RTO LMP) and mix_n_obs from mix.json; that is not price_vol. "
+    "high-spread is an internal zonal flag, not returned "
     "on HTTP/MCP nowcast bodies."
 )
 
@@ -286,8 +288,9 @@ def service_card(settings: Settings) -> dict:
                 "price": settings.price_l1,
                 "description": (
                     "Latest snapshot plus trailing 24h descriptive stats. "
-                    "Also last price_vol ($/MWh rolling realized LMP std, not Black vol) "
-                    "and price_vol_missing. "
+                    "Also last price_vol ($/MWh rolling realized LMP std, not Black vol), "
+                    "price_vol_missing, mix_std_price (mixture std of RTO LMP, not price_vol), "
+                    "and mix_n_obs. "
                     + output_fields
                 ),
                 "inputSchema": latest_schema,

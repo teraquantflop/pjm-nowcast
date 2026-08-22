@@ -68,7 +68,31 @@ def _hmm_tick(
     update(snap, feats)
     save_snapshot(Path(settings.snapshot_path), snap)
     summary = predictive_summary(snap)
+    _write_mix_json(settings, summary)
     _log_hmm(summary, feats)
+
+
+def _write_mix_json(settings: Settings, summary: dict) -> None:
+    """Sidecar for /latest. Does not change HMM update math."""
+    import json
+
+    path = Path(settings.data_dir) / "mix.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    mix_std = summary.get("mix_std_price")
+    try:
+        mix_std_f = float(mix_std) if mix_std is not None else None
+        if mix_std_f is not None and (not math.isfinite(mix_std_f) or mix_std_f <= 0):
+            mix_std_f = None
+    except (TypeError, ValueError):
+        mix_std_f = None
+    payload = {
+        "mix_std_price": mix_std_f,
+        "mix_mean_price": summary.get("mix_mean_price"),
+        "n_obs": summary.get("n_obs"),
+        "entropy": summary.get("entropy"),
+        "status": summary.get("status"),
+    }
+    path.write_text(json.dumps(payload), encoding="utf-8")
 
 
 def _log_hmm(summary: dict, feats) -> None:

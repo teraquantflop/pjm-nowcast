@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 from copy import deepcopy
@@ -273,6 +274,11 @@ def test_hmm_tick_restores_price_vol_from_sqlite_on_restart(tmp_path):
     assert snap.last_features.price_vol == rms_price_vol(
         prior + [snap.last_features.price]
     )
+    mix_path = tmp_path / "mix.json"
+    assert mix_path.exists()
+    mix = json.loads(mix_path.read_text(encoding="utf-8"))
+    assert "mix_std_price" in mix
+    assert "n_obs" in mix
     store.close()
 
 

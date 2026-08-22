@@ -189,6 +189,17 @@ def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, A
                 ),
             },
             "price_vol_missing": {"type": "boolean"},
+            "mix_std_price": {
+                "type": ["number", "null"],
+                "description": (
+                    "Latest only. Mixture std of RTO LMP in $/MWh from the "
+                    "poller mix.json sidecar. Not price_vol and not rtoLmp.std."
+                ),
+            },
+            "mix_n_obs": {
+                "type": ["integer", "null"],
+                "description": "Latest only. Observation count paired with mix_std_price.",
+            },
             "windowHours": {"type": "integer"},
             "resolution": {"type": "string"},
             "priorPeriod": {"type": "object"},

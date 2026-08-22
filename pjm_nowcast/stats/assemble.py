@@ -187,6 +187,29 @@ def _price_vol_from_sqlite(store: Store) -> tuple[float | None, bool]:
     return price_vol_from_lmps(store.recent_rto_lmps(PRICE_VOL_WINDOW))
 
 
+def _mix_from_sidecar(settings: Settings) -> tuple[float | None, int | None]:
+    path = Path(getattr(settings, "data_dir", "") or "") / "mix.json"
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return None, None
+    if not isinstance(data, dict):
+        return None, None
+    mix_std = data.get("mix_std_price")
+    try:
+        mix_f = float(mix_std) if mix_std is not None else None
+        if mix_f is not None and (not math.isfinite(mix_f) or mix_f <= 0):
+            mix_f = None
+    except (TypeError, ValueError):
+        mix_f = None
+    n = data.get("n_obs")
+    try:
+        n_i = int(n) if n is not None else None
+    except (TypeError, ValueError):
+        n_i = None
+    return mix_f, n_i
+
+
 def resolve_price_vol(store: Store, settings: Settings) -> tuple[float | None, bool]:
     """Sticky last price_vol for /latest.
 
@@ -219,6 +242,9 @@ def assemble_latest(
     vol, missing = resolve_price_vol(store, settings)
     body["price_vol_missing"] = missing
     body["price_vol"] = None if missing else vol
+    mix_std, mix_n = _mix_from_sidecar(settings)
+    body["mix_std_price"] = mix_std
+    body["mix_n_obs"] = mix_n
     if "rto_lmp" in fams:
         body["rtoLmp"] = _lmp_block(window)
     if "zonal_spread" in fams:
