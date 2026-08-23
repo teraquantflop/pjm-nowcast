@@ -54,12 +54,18 @@ pytest
 
 ## Payments (x402)
 
-Paid routes accept USDC via the `exact` scheme on **Solana mainnet** and **Base mainnet**.
+Paid routes accept USDC via the `exact` scheme on **Solana mainnet**, **Base mainnet**, and **Polygon mainnet**.
 
 Facilitators (verify/settle only; they do not change prices or pay-to addresses):
 
-- **PayAI** (`FACILITATOR_URL`, default `https://facilitator.payai.network`) — Solana, and Base when CDP is not configured.
-- **Coinbase CDP** — Base (`eip155:8453`) when both `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` are set. Missing keys keep PayAI-only; the process still starts.
+- **PayAI** (`FACILITATOR_URL`, default `https://facilitator.payai.network`) — Solana, Polygon, and Base when CDP is not configured.
+- **Coinbase CDP** — Base (`eip155:8453`) when both `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` are set. Missing keys keep PayAI-only; the process still starts. CDP is not used for Polygon.
+
+Receive addresses (public only; never spending keys):
+
+- `PAY_TO_SVM_ADDRESS` — Solana USDC
+- `PAY_TO_EVM_ADDRESS` — **Base only** (`eip155:8453`)
+- `POLY_PAY_TO` — **Polygon only** (`eip155:137`), Circle USDC `0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`. Never alias this to `PAY_TO_EVM_ADDRESS` / `EVM_PAY_TO`.
 
 `GET /health` and `GET /` report which facilitators are configured (names only, never secrets).
 
@@ -82,7 +88,7 @@ curl -sS "$PUBLIC_BASE_URL/mcp" -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Free tools: `health`, `service_info`, `demo_sample`. Paid: `nowcast_latest` ($0.02), `nowcast_history` ($0.10), `nowcast_history_extended` ($0.25) — x402 exact USDC on Solana and Base. Unpaid paid-tool calls stay JSON-RPC 200 with `paymentStatus: "required"` and a `paymentRequired` challenge (same terms as HTTP 402). HTTP `POST /v1/nowcast/*` without payment is still 402.
+Free tools: `health`, `service_info`, `demo_sample`. Paid: `nowcast_latest` ($0.02), `nowcast_history` ($0.10), `nowcast_history_extended` ($0.25) — x402 exact USDC on Solana, Base, and Polygon. Unpaid paid-tool calls stay JSON-RPC 200 with `paymentStatus: "required"` and a `paymentRequired` challenge (same terms as HTTP 402). HTTP `POST /v1/nowcast/*` without payment is still 402.
 
 ## Railway
 
@@ -93,7 +99,7 @@ One service is the default:
 - Persistent volume mounted at `/data`, and `DATA_DIR=/data` (SQLite is `$DATA_DIR/pjm-nowcast.sqlite`, 30-day rolling retention). If logs show `db=var/pjm-nowcast.sqlite` or `n_store=0` on boot, the DB is on the ephemeral image, not the volume. Production remaps a relative `./var` to `/data`.
 - `TRUST_PROXY=true`, `ENV=production`, `PUBLIC_BASE_URL=https://pjm-nowcast-production.up.railway.app`
 - `RUN_POLLER=true`
-- Set public `PAY_TO_SVM_ADDRESS` / `PAY_TO_EVM_ADDRESS`
+- Set public `PAY_TO_SVM_ADDRESS`, `PAY_TO_EVM_ADDRESS` (Base), and `POLY_PAY_TO` (Polygon)
 
 Two-process alternative: web with `RUN_POLLER=false` plus a worker `python -m pjm_nowcast.poller` sharing the same volume.
 

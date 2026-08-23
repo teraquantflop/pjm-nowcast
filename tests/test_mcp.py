@@ -27,7 +27,7 @@ def test_mcp_service_info_free(client):
     names = {t["name"] for t in tools}
     assert names == EXPECTED_TOOLS
     dumped = str(tools)
-    assert "payTo" not in dumped
+    assert '"payTo"' not in dumped
     assert "pay_to" not in dumped
     paid = {t["name"]: t for t in tools if t["name"].startswith("nowcast_")}
     for name, tool in paid.items():

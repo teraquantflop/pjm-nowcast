@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from pjm_nowcast import DISCLAIMER, __version__
+from pjm_nowcast.payments.routes import PAID_DESCRIPTIONS, PAID_ROUTES, pay_to_by_network, price_for
 from pjm_nowcast.settings import Settings
 
 DEMO_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "demo" / "sample.json"
@@ -34,6 +35,8 @@ FREE_DISCOVERY_PATHS = (
     "/llm.txt",
     "/.well-known/x402",
     "/.well-known/x402.json",
+    "/.well-known/agent.json",
+    "/.well-known/x402-resources",
     "/.well-known/llms.txt",
     "/.well-known/llm.txt",
     "/skill.md",
@@ -113,6 +116,8 @@ def health_payload(settings: Settings, store: Any) -> dict[str, Any]:
         "status": status,
         "db": "ok",
         "facilitators": settings.facilitator_status(),
+        "networks": list(settings.network_list),
+        "payToByNetwork": pay_to_by_network(settings),
         "poller": {
             "lastSuccessAt": poll.get("lastSuccessAt"),
             "lastError": poll.get("lastError"),
@@ -194,6 +199,7 @@ def service_card(settings: Settings) -> dict:
         "iconUrl": settings.public_icon_url or f"{base}/favicon.ico",
         "timezone": "America/New_York",
         "networks": settings.network_list,
+        "payToByNetwork": pay_to_by_network(settings),
         "facilitators": settings.facilitator_status(),
         "prices": prices,
         "mcp": mcp_mount(settings),
@@ -277,6 +283,20 @@ def service_card(settings: Settings) -> dict:
             {
                 "tier": "L0",
                 "method": "GET",
+                "path": "/.well-known/agent.json",
+                "price": "free",
+                "description": "Agent card: name, paid tools, networks, facilitator.",
+            },
+            {
+                "tier": "L0",
+                "method": "GET",
+                "path": "/.well-known/x402-resources",
+                "price": "free",
+                "description": "Machine list of paid resources (method, path, price, networks).",
+            },
+            {
+                "tier": "L0",
+                "method": "GET",
                 "path": "/robots.txt",
                 "price": "free",
                 "description": "Allows free discovery paths.",
@@ -346,7 +366,7 @@ def skill_markdown(settings: Settings) -> str:
             f"Base URL: {base}",
             mcp_line,
             "",
-            "Pay: x402 exact USDC on Solana and Base. Unpaid paid routes return HTTP 402 with a PAYMENT-REQUIRED header. Unpaid MCP paid tools return paymentStatus=required and the same paymentRequired body.",
+            "Pay: x402 exact USDC on Solana, Base, and Polygon. Unpaid paid routes return HTTP 402 with a PAYMENT-REQUIRED header. Unpaid MCP paid tools return paymentStatus=required and the same paymentRequired body.",
             "",
             "Free:",
             "- GET /",
@@ -450,6 +470,8 @@ def well_known_x402(settings: Settings) -> dict:
         "/llms.txt",
         "/llm.txt",
         "/.well-known/x402",
+        "/.well-known/agent.json",
+        "/.well-known/x402-resources",
         "/.well-known/llms.txt",
         "/.well-known/llm.txt",
         "/skill.md",
@@ -467,6 +489,7 @@ def well_known_x402(settings: Settings) -> dict:
         "scheme": "exact",
         "asset": "USDC",
         "networks": list(settings.network_list),
+        "payToByNetwork": pay_to_by_network(settings),
         "facilitators": settings.facilitator_status(),
         "mcp": mcp,
         "resources": [
@@ -497,3 +520,88 @@ def well_known_x402(settings: Settings) -> dict:
     if mcp:
         out["free"] = list(out["free"]) + [mcp["url"]]
     return out
+
+
+def agent_card(settings: Settings) -> dict[str, Any]:
+    base = public_base(settings)
+    mcp = mcp_mount(settings)
+    tools = [
+        {
+            "name": "health",
+            "method": "GET",
+            "path": "/health",
+            "price": "free",
+            "paid": False,
+        },
+        {
+            "name": "nowcast_latest",
+            "method": "POST",
+            "path": "/v1/nowcast/latest",
+            "price": settings.price_l1,
+            "paid": True,
+        },
+        {
+            "name": "nowcast_history",
+            "method": "POST",
+            "path": "/v1/nowcast/history",
+            "price": settings.price_l2,
+            "paid": True,
+        },
+        {
+            "name": "nowcast_history_extended",
+            "method": "POST",
+            "path": "/v1/nowcast/history/extended",
+            "price": settings.price_l3,
+            "paid": True,
+        },
+    ]
+    return {
+        "name": "pjm-nowcast",
+        "description": WHAT_IT_IS,
+        "version": __version__,
+        "url": base,
+        "facilitator": settings.facilitator_url,
+        "networks": list(settings.network_list),
+        "payToByNetwork": pay_to_by_network(settings),
+        "mcp": mcp,
+        "tools": tools,
+    }
+
+
+def x402_resources(settings: Settings) -> dict[str, Any]:
+    schemas = {
+        "/v1/nowcast/latest": {
+            "families": "optional array of rto_lmp | zonal_spread | rto_load",
+        },
+        "/v1/nowcast/history": {
+            "families": "optional",
+            "windowHours": "1–72, default 24",
+        },
+        "/v1/nowcast/history/extended": {
+            "families": "optional",
+            "windowHours": f"1–{settings.l3_max_hours}, default 168",
+            "resolution": "native | hourly",
+            "compare": "none | prior_period",
+        },
+    }
+    resources = []
+    for path in PAID_ROUTES:
+        resources.append(
+            {
+                "method": "POST",
+                "path": path,
+                "price": price_for(path, settings),
+                "scheme": "exact",
+                "asset": "USDC",
+                "networks": list(settings.network_list),
+                "payToByNetwork": pay_to_by_network(settings),
+                "description": PAID_DESCRIPTIONS.get(path, ""),
+                "inputSchema": schemas.get(path, {}),
+            }
+        )
+    return {
+        "x402Version": 2,
+        "url": public_base(settings),
+        "facilitator": settings.facilitator_url,
+        "resources": resources,
+    }

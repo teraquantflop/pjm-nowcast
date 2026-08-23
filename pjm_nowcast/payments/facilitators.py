@@ -116,7 +116,7 @@ def build_facilitator_clients(settings: Settings) -> list[Any]:
     payai = _payai_client(settings)
     clients.append(payai)
     log.info(
-        "PayAI facilitator enabled url=%s (Solana; Base fallback=%s)",
+        "PayAI facilitator enabled url=%s (Solana + Polygon; Base fallback=%s)",
         settings.facilitator_url,
         "no" if cdp is not None else "yes",
     )

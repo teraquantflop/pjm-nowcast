@@ -1,4 +1,4 @@
-"""Free/catalog routes must not echo receiving wallets; 402 still must."""
+"""Plaintext/OpenAPI catalogs omit wallets; JSON discovery may list public payToByNetwork. 402 still has payTo."""
 
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from pjm_nowcast.settings import Settings
 
 EVM = "0x1111111111111111111111111111111111111111"
 SVM = "7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU"
+POLY = "0x2222222222222222222222222222222222222222"
 
 
 @pytest.fixture
@@ -32,6 +33,7 @@ def walleted_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         public_base_url="http://testserver",
         pay_to_evm_address=EVM,
         pay_to_svm_address=SVM,
+        poly_pay_to=POLY,
         rate_limit_rps=1000,
         rate_limit_burst=1000,
     )
@@ -42,34 +44,49 @@ def walleted_client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 def _assert_no_wallets(text: str) -> None:
     lower = text.lower()
-    assert "payto" not in lower.replace("_", "")
     assert EVM.lower() not in lower
     assert SVM not in text
+    assert POLY.lower() not in lower
     assert "receivingaddress" not in lower
     assert "solanaaddress" not in lower
     assert "evmaddress" not in lower
 
 
-def test_free_routes_do_not_expose_wallets(walleted_client):
+def test_plaintext_and_openapi_do_not_expose_wallets(walleted_client):
     for path in (
-        "/health",
-        "/",
-        "/v1/discovery",
         "/openapi.json",
         "/swagger.json",
         "/skill.md",
         "/llms.txt",
         "/llm.txt",
-        "/.well-known/x402",
-        "/.well-known/x402.json",
         "/.well-known/llms.txt",
         "/.well-known/llm.txt",
         "/v1/demo/sample",
-        "/mcp",
     ):
         r = walleted_client.get(path)
         assert r.status_code == 200, path
         _assert_no_wallets(r.text)
+
+
+def test_json_catalogs_map_payto_per_network(walleted_client):
+    for path in (
+        "/health",
+        "/",
+        "/v1/discovery",
+        "/.well-known/x402",
+        "/.well-known/agent.json",
+        "/.well-known/x402-resources",
+    ):
+        r = walleted_client.get(path)
+        assert r.status_code == 200, path
+        body = r.json()
+        mapping = body.get("payToByNetwork")
+        if mapping is None and path == "/.well-known/x402-resources":
+            mapping = body["resources"][0]["payToByNetwork"]
+        assert mapping["eip155:8453"] == EVM
+        assert mapping["eip155:137"] == POLY
+        assert mapping["solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"] == SVM
+        assert mapping["eip155:137"] != mapping["eip155:8453"]
 
 
 def test_unpaid_402_still_includes_payto(walleted_client):
@@ -83,3 +100,4 @@ def test_unpaid_402_still_includes_payto(walleted_client):
     paytos = {a.get("payTo") for a in challenge["accepts"]}
     assert EVM in paytos
     assert SVM in paytos
+    assert POLY in paytos

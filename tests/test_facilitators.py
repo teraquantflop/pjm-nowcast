@@ -18,6 +18,7 @@ def test_missing_cdp_keys_still_builds_payai(tmp_path):
     assert status["cdp"] is False
     assert status["base"] == "payai"
     assert status["solana"] == "payai"
+    assert status["polygon"] == "payai"
     clients = build_facilitator_clients(settings)
     assert len(clients) == 1
 
@@ -51,6 +52,7 @@ def test_cdp_keys_set_status_without_crashing(tmp_path, monkeypatch):
     assert status["cdp"] is True
     assert status["base"] == "cdp"
     assert status["solana"] == "payai"
+    assert status["polygon"] == "payai"
     # Even if cdp-sdk is missing, PayAI client is still built.
     clients = build_facilitator_clients(settings)
     assert len(clients) >= 1
@@ -64,6 +66,7 @@ def test_health_and_root_list_facilitators(client):
         assert fac["payai"] is True
         assert "cdp" in fac
         assert fac["solana"] == "payai"
+        assert fac["polygon"] == "payai"
         dumped = str(body)
         assert "test-secret" not in dumped
         assert "CDP_API_KEY_SECRET" not in dumped

@@ -32,6 +32,8 @@ FREE_PATHS = {
     "/swagger.json",
     "/llms.txt",
     "/.well-known/x402",
+    "/.well-known/agent.json",
+    "/.well-known/x402-resources",
 }
 
 PAID_PATHS = frozenset(PAID_ROUTES)

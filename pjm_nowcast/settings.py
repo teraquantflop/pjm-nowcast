@@ -82,8 +82,9 @@ class Settings(BaseSettings):
     pay_to_svm_address: str = ""
     pay_to_evm_address: str = ""
     pay_to_address: str = ""
+    poly_pay_to: str = ""
     networks: str = (
-        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp,eip155:8453"
+        "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp,eip155:8453,eip155:137"
     )
     facilitator_url: str = "https://facilitator.payai.network"
     price_l1: str = "$0.02"
@@ -162,9 +163,10 @@ class Settings(BaseSettings):
                 not self.pay_to_svm_address
                 and not self.pay_to_evm_address
                 and not self.pay_to_address
+                and not self.poly_pay_to
             ):
                 raise RuntimeError(
-                    "At least one PAY_TO_* address is required in production"
+                    "At least one PAY_TO_* / POLY_PAY_TO address is required in production"
                 )
         return self
 
@@ -184,6 +186,7 @@ class Settings(BaseSettings):
 
     @property
     def evm_pay_to(self) -> str:
+        """Base (eip155:8453) only. Never Polygon."""
         return self.pay_to_evm_address or (
             self.pay_to_address if self.pay_to_address.startswith("0x") else ""
         )
@@ -220,6 +223,7 @@ class Settings(BaseSettings):
             "cdp": cdp,
             "base": "cdp" if cdp else "payai",
             "solana": "payai",
+            "polygon": "payai",
         }
 
 

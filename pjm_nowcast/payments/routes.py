@@ -36,6 +36,12 @@ BASE_USDC_ADDRESS = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
 BASE_USDC_EIP712_EXTRA = {"name": "USD Coin", "version": "2"}
 BASE_NETWORK = "eip155:8453"
 
+SOLANA_NETWORK = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
+POLYGON_NETWORK = "eip155:137"
+# Native Circle USDC on Polygon PoS (not bridged USDC.e).
+POLYGON_USDC_ADDRESS = "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+POLYGON_USDC_EIP712_EXTRA = {"name": "USD Coin", "version": "2"}
+
 
 def resource_url(settings: Settings, path: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}{path}"
@@ -79,3 +85,16 @@ def match_paid_path(path: str) -> str | None:
     if stripped in PAID_ROUTES:
         return stripped
     return None
+
+
+def pay_to_by_network(settings: Settings) -> dict[str, str]:
+    """Public receive addresses keyed by CAIP-2 network. No aliases across chains."""
+    nets = set(settings.network_list)
+    out: dict[str, str] = {}
+    if settings.svm_pay_to and SOLANA_NETWORK in nets:
+        out[SOLANA_NETWORK] = settings.svm_pay_to
+    if settings.evm_pay_to and BASE_NETWORK in nets:
+        out[BASE_NETWORK] = settings.evm_pay_to
+    if settings.poly_pay_to and POLYGON_NETWORK in nets:
+        out[POLYGON_NETWORK] = settings.poly_pay_to
+    return out

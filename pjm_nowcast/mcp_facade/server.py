@@ -13,7 +13,7 @@ from pjm_nowcast.api.discovery import health_payload, load_demo_sample, mcp_moun
 from pjm_nowcast.payments.gate import payment_required_payload
 from pjm_nowcast.payments.optionbook import HEADER as OPTIONBOOK_HEADER
 from pjm_nowcast.payments.optionbook import header_matches
-from pjm_nowcast.payments.routes import price_for
+from pjm_nowcast.payments.routes import pay_to_by_network, price_for
 from pjm_nowcast.settings import Settings
 from pjm_nowcast.stats.assemble import assemble_history, assemble_latest
 
@@ -78,6 +78,7 @@ def _x402_meta(settings: Settings, path: str) -> dict[str, Any]:
         "asset": "USDC",
         "price": price_for(path, settings),
         "networks": list(settings.network_list),
+        "payToByNetwork": pay_to_by_network(settings),
         "httpPath": path,
         "unpaid": "paymentStatus=required and paymentRequired in the tool result",
     }

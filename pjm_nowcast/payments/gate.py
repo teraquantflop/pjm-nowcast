@@ -30,6 +30,10 @@ from pjm_nowcast.payments.routes import (
     FREE_TIER_ELIGIBLE,
     PAID_DESCRIPTIONS,
     PAID_ROUTES,
+    POLYGON_NETWORK,
+    POLYGON_USDC_ADDRESS,
+    POLYGON_USDC_EIP712_EXTRA,
+    SOLANA_NETWORK,
     match_paid_path,
     price_for,
     resource_object,
@@ -185,33 +189,43 @@ def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
 
         clients = build_facilitator_clients(settings)
         server = x402ResourceServer(clients)
-        evm_net = "eip155:8453"
-        svm_net = "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp"
-        if evm_net in settings.network_list and settings.evm_pay_to:
-            server.register(evm_net, ExactEvmServerScheme())
-        if svm_net in settings.network_list and settings.svm_pay_to:
-            server.register(svm_net, ExactSvmServerScheme())
+        nets = set(settings.network_list)
+        if BASE_NETWORK in nets and settings.evm_pay_to:
+            server.register(BASE_NETWORK, ExactEvmServerScheme())
+        if POLYGON_NETWORK in nets and settings.poly_pay_to:
+            server.register(POLYGON_NETWORK, ExactEvmServerScheme())
+        if SOLANA_NETWORK in nets and settings.svm_pay_to:
+            server.register(SOLANA_NETWORK, ExactSvmServerScheme())
 
         routes: dict[str, Any] = {}
         for path, _tier in PAID_ROUTES.items():
             accepts = []
             price = price_for(path, settings)
-            if settings.evm_pay_to and evm_net in settings.network_list:
+            if settings.evm_pay_to and BASE_NETWORK in nets:
                 accepts.append(
                     PaymentOption(
                         scheme="exact",
                         pay_to=settings.evm_pay_to,
                         price=price,
-                        network=evm_net,
+                        network=BASE_NETWORK,
                     )
                 )
-            if settings.svm_pay_to and svm_net in settings.network_list:
+            if settings.poly_pay_to and POLYGON_NETWORK in nets:
+                accepts.append(
+                    PaymentOption(
+                        scheme="exact",
+                        pay_to=settings.poly_pay_to,
+                        price=price,
+                        network=POLYGON_NETWORK,
+                    )
+                )
+            if settings.svm_pay_to and SOLANA_NETWORK in nets:
                 accepts.append(
                     PaymentOption(
                         scheme="exact",
                         pay_to=settings.svm_pay_to,
                         price=price,
-                        network=svm_net,
+                        network=SOLANA_NETWORK,
                     )
                 )
             if not accepts:
@@ -249,24 +263,36 @@ def _accept_entry(*, network: str, pay_to: str, price: str) -> dict[str, Any]:
         # @x402/evm needs the contract + EIP-712 domain, not the ticker string.
         entry["asset"] = BASE_USDC_ADDRESS
         entry["extra"] = dict(BASE_USDC_EIP712_EXTRA)
+    elif network == POLYGON_NETWORK:
+        entry["asset"] = POLYGON_USDC_ADDRESS
+        entry["extra"] = dict(POLYGON_USDC_EIP712_EXTRA)
     return entry
 
 
 def payment_required_payload(settings: Settings, path: str) -> dict[str, Any]:
     accepts = []
     price = price_for(path, settings)
-    if settings.evm_pay_to:
+    nets = set(settings.network_list)
+    if settings.evm_pay_to and BASE_NETWORK in nets:
         accepts.append(
             _accept_entry(
-                network="eip155:8453",
+                network=BASE_NETWORK,
                 pay_to=settings.evm_pay_to,
                 price=price,
             )
         )
-    if settings.svm_pay_to:
+    if settings.poly_pay_to and POLYGON_NETWORK in nets:
         accepts.append(
             _accept_entry(
-                network="solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp",
+                network=POLYGON_NETWORK,
+                pay_to=settings.poly_pay_to,
+                price=price,
+            )
+        )
+    if settings.svm_pay_to and SOLANA_NETWORK in nets:
+        accepts.append(
+            _accept_entry(
+                network=SOLANA_NETWORK,
                 pay_to=settings.svm_pay_to,
                 price=price,
             )
@@ -275,7 +301,7 @@ def payment_required_payload(settings: Settings, path: str) -> dict[str, Any]:
         # Still advertise so unpaid clients get a 402, not a 400.
         accepts.append(
             _accept_entry(
-                network="eip155:8453",
+                network=BASE_NETWORK,
                 pay_to="0x0000000000000000000000000000000000000000",
                 price=price,
             )

@@ -64,6 +64,10 @@ def test_only_three_paid_nowcast_posts_have_payment_docs(client):
                 assert acc["asset"] == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
                 assert acc["extra"]["name"] == "USD Coin"
                 assert acc["extra"]["version"] == "2"
+            if acc["network"] == "eip155:137":
+                assert acc["asset"] == "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+                assert acc["extra"]["name"] == "USD Coin"
+                assert acc["extra"]["version"] == "2"
 
 
 def test_mcp_not_in_openapi(client):

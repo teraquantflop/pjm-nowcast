@@ -75,6 +75,9 @@ def test_empty_json_object_is_402_with_atomic_amounts(enforcing_client):
             if acc["network"] == "eip155:8453":
                 assert acc["asset"] == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
                 assert acc["extra"] == {"name": "USD Coin", "version": "2"}
+            elif acc["network"] == "eip155:137":
+                assert acc["asset"] == "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
+                assert acc["extra"] == {"name": "USD Coin", "version": "2"}
             else:
                 assert acc["asset"] == "USDC"
 

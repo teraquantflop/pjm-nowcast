@@ -101,7 +101,7 @@ def test_llms_robots_well_known(client):
     assert wk.status_code == 200
     assert wk_json.status_code == 200
     assert wk.json() == wk_json.json()
-    assert "payTo" not in wk.text
+    assert "payToByNetwork" in wk.json()
     assert wk.json()["mcp"]["url"].endswith("/mcp")
     card = client.get("/").json()
     paths = {e["path"] for e in card["endpoints"]}
@@ -110,7 +110,15 @@ def test_llms_robots_well_known(client):
     assert "/llms.txt" in paths
     assert "/.well-known/x402" in paths
     assert "/mcp" in paths
+    assert "/.well-known/agent.json" in paths
+    assert "/.well-known/x402-resources" in paths
     assert "entropy" not in str(card).lower()
+    agent = client.get("/.well-known/agent.json")
+    assert agent.status_code == 200
+    assert agent.json()["name"] == "pjm-nowcast"
+    resources = client.get("/.well-known/x402-resources")
+    assert resources.status_code == 200
+    assert resources.json()["resources"]
 
 
 def test_health_ok_after_seed(client, store):

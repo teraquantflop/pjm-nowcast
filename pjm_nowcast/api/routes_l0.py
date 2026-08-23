@@ -6,6 +6,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
 from pjm_nowcast.api.discovery import (
+    agent_card,
     health_payload,
     llms_txt,
     load_demo_sample,
@@ -13,6 +14,7 @@ from pjm_nowcast.api.discovery import (
     service_card,
     skill_markdown,
     well_known_x402,
+    x402_resources,
 )
 from pjm_nowcast.api.errors import error_response
 from pjm_nowcast.settings import Settings
@@ -83,6 +85,16 @@ def robots():
 @router.get("/.well-known/x402.json", include_in_schema=False)
 def well_known(request: Request):
     return JSONResponse(well_known_x402(request.app.state.settings))
+
+
+@router.get("/.well-known/agent.json", summary="Agent card", tags=["free"])
+def well_known_agent(request: Request):
+    return JSONResponse(agent_card(request.app.state.settings))
+
+
+@router.get("/.well-known/x402-resources", summary="x402 paid resources", tags=["free"])
+def well_known_resources(request: Request):
+    return JSONResponse(x402_resources(request.app.state.settings))
 
 
 @router.get("/v1/demo/sample", summary="Fixed demo sample", tags=["free"])
