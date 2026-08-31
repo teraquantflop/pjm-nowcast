@@ -100,9 +100,29 @@ def test_get_on_paid_path_is_402_not_405(enforcing_client):
     ):
         r = enforcing_client.get(path)
         assert r.status_code == 402, path
+        assert r.status_code != 200
         acc = _challenge(r)["accepts"][0]
         assert acc["amount"]
         assert acc["maxAmountRequired"] == acc["amount"]
+        assert "rtoLmp" not in r.json()
+
+
+def test_head_on_paid_path_is_402(enforcing_client):
+    for path in (
+        "/v1/nowcast/latest",
+        "/v1/nowcast/history",
+        "/v1/nowcast/history/extended",
+    ):
+        r = enforcing_client.head(path)
+        assert r.status_code == 402, path
+        allow = r.headers.get("allow") or r.headers.get("Allow") or ""
+        assert "POST" in allow.upper()
+        raw = r.headers.get("payment-required") or r.headers.get("PAYMENT-REQUIRED")
+        assert raw, path
+        challenge = _challenge(r)
+        assert challenge["accepts"]
+        body = r.json() if r.content else {}
+        assert "rtoLmp" not in body
 
 
 def test_unpaid_probes_do_not_429(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):

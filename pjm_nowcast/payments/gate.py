@@ -76,19 +76,19 @@ class PaymentGateMiddleware:
             fallback=_peer_host(scope),
         )
 
-        paid = match_paid_path(path) if method in {"GET", "POST"} else None
+        paid = match_paid_path(path) if method in {"GET", "HEAD", "POST"} else None
         optionbook = _optionbook_client(self.settings, headers)
 
-        # Unpaid probes on paid paths (GET or POST) return 402 before body
-        # validation and do not consume the rate-limit bucket so scanners
-        # can hit all three routes without 429.
+        # Unpaid probes on paid paths (GET, HEAD, or POST) return 402 before
+        # body validation and do not consume the rate-limit bucket so scanners
+        # can hit all three routes without 429. HEAD does not run handlers.
         if (
             paid
             and not self.settings.x402_disabled
             and not _has_payment(headers)
             and not optionbook
         ):
-            if method == "GET":
+            if method in {"GET", "HEAD"}:
                 await _send_402(send, self.settings, paid)
                 return
             if method == "POST":
@@ -369,6 +369,7 @@ async def _send_402(send: Send, settings: Settings, path: str) -> None:
             "headers": [
                 (b"content-type", b"application/json; charset=utf-8"),
                 (b"payment-required", encoded.encode("ascii")),
+                (b"allow", b"POST"),
                 (b"cache-control", b"no-store"),
             ],
         }

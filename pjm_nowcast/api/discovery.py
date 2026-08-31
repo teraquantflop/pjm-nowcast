@@ -23,6 +23,17 @@ WHAT_IT_IS_NOT = (
     "freshness equals the last successful background poll."
 )
 
+WHEN_TO_USE = (
+    "When to use: You need a PJM window nowcast — load, prints, or realized "
+    "window volatility — for a named hub or node, as inputs to mark or risk a "
+    "power window or forward."
+)
+WHEN_NOT_TO_USE = (
+    "When not to use: You already have model inputs (S or forward mark, K, times, "
+    "r, σ or a premium) and only need fair value, Greeks, or an IV surface; you "
+    "want a generic ticker screener or “price any stock.”"
+)
+
 TAGS = ["pjm", "lmp", "load", "spread", "electricity"]
 
 # Free discovery surfaces (not new paid URLs).
@@ -193,6 +204,8 @@ def service_card(settings: Settings) -> dict:
         "version": __version__,
         "description": WHAT_IT_IS,
         "whatItIsNot": WHAT_IT_IS_NOT,
+        "whenToUse": WHEN_TO_USE,
+        "whenNotToUse": WHEN_NOT_TO_USE,
         "disclaimer": DISCLAIMER,
         "publicBaseUrl": base,
         "tags": TAGS,
@@ -409,6 +422,9 @@ def llms_txt(settings: Settings) -> str:
         "",
         f"Base: {base}",
         "",
+        WHEN_TO_USE,
+        WHEN_NOT_TO_USE,
+        "",
         "## MCP",
     ]
     if mcp:
@@ -450,7 +466,7 @@ def llms_txt(settings: Settings) -> str:
 
 
 def robots_txt() -> str:
-    lines = ["User-agent: *", "Allow: /"]
+    lines = ["User-agent: *", "Allow: /", "Allow: /.well-known/"]
     for path in FREE_DISCOVERY_PATHS:
         if path != "/":
             lines.append(f"Allow: {path}")

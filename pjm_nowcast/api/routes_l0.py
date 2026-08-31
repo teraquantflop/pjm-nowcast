@@ -78,7 +78,11 @@ def llms(request: Request):
 
 @router.get("/robots.txt", include_in_schema=False)
 def robots():
-    return PlainTextResponse(robots_txt(), media_type="text/plain")
+    return PlainTextResponse(
+        robots_txt(),
+        media_type="text/plain; charset=utf-8",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.get("/.well-known/x402", summary="x402 well-known", tags=["free"])

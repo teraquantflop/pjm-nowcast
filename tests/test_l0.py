@@ -15,6 +15,8 @@ def test_service_card(client):
     body = r.json()
     assert body["name"] == "pjm-nowcast"
     assert "forecast" in body["whatItIsNot"].lower()
+    assert "When to use" in r.text
+    assert "When not to use" in r.text
     assert "HMM" not in r.text
     assert "entropy" not in r.text.lower()
     paths = {e["path"] for e in body["endpoints"]}
@@ -96,8 +98,17 @@ def test_llms_robots_well_known(client):
     assert "price_vol" in llms.text
     assert "Streamable HTTP" in llms.text
     assert robots.status_code == 200
+    assert "User-agent" in robots.text
     assert "Allow: /openapi.json" in robots.text
     assert "Allow: /llm.txt" in robots.text
+    assert "Allow: /.well-known/" in robots.text
+    assert "Disallow: /v1/" not in robots.text
+    ctype = robots.headers.get("content-type", "")
+    assert "text/plain" in ctype
+    cache = robots.headers.get("cache-control", "")
+    assert "max-age=3600" in cache
+    assert "When to use" in llms.text
+    assert "When not to use" in llms.text
     assert wk.status_code == 200
     assert wk_json.status_code == 200
     assert wk.json() == wk_json.json()
