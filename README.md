@@ -10,7 +10,7 @@ HTTP and MCP request handlers only read a local SQLite store. A background polle
 
 | Tier | Route | What it returns |
 |------|--------|-----------------|
-| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /openapi.json`, `GET /swagger.json`, `GET /skill.md`, `GET /llms.txt`, `GET /llm.txt`, `GET /.well-known/x402`, `GET /favicon.ico` | Health, service card, demo, OpenAPI aliases, agent discovery, favicon |
+| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /openapi.json`, `GET /swagger.json`, `GET /skill.md`, `GET /llms.txt`, `GET /llm.txt`, `GET /.well-known/x402`, `GET /favicon.ico` | Health, service card, unpaid synthetic schema fixture, OpenAPI aliases, agent discovery, favicon |
 | L1 | `POST /v1/nowcast/latest` | Latest snapshot + trailing 24h stats |
 | L2 | `POST /v1/nowcast/history` | 1–72h history (native poll points) |
 | L3 | `POST /v1/nowcast/history/extended` | Up to 30-day history, hourly buckets, prior-period comparison |
@@ -88,7 +88,7 @@ curl -sS "$PUBLIC_BASE_URL/mcp" -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Free tools: `health`, `service_info`, `demo_sample`. Paid: `nowcast_latest` ($0.02), `nowcast_history` ($0.10), `nowcast_history_extended` ($0.25) — x402 exact USDC on Solana, Base, and Polygon. Unpaid paid-tool calls stay JSON-RPC 200 with `paymentStatus: "required"` and a `paymentRequired` challenge (same terms as HTTP 402). HTTP `POST /v1/nowcast/*` without payment is still 402.
+Free tools: `health`, `service_info`, `demo_sample` (GET `/v1/demo/sample` unpaid synthetic fixture, not live PJM). Paid: `nowcast_latest` ($0.02), `nowcast_history` ($0.10), `nowcast_history_extended` ($0.25) — x402 exact USDC on Solana, Base, and Polygon. Unpaid paid-tool calls stay JSON-RPC 200 with `paymentStatus: "required"` and a `paymentRequired` challenge (same terms as HTTP 402). HTTP `POST /v1/nowcast/*` without payment is still 402.
 
 ## Railway
 

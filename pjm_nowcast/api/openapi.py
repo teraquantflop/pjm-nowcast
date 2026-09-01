@@ -236,6 +236,12 @@ def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, A
             for verb, op in methods.items():
                 if verb.lower() in _verbs and isinstance(op, dict):
                     op["security"] = []
+                    if path == "/v1/demo/sample" and verb.lower() == "get":
+                        op["summary"] = "Fetch a synthetic unpaid nowcast sample fixture"
+                        op["description"] = (
+                            "Unpaid synthetic fixture for schema inspection only. "
+                            "Not live PJM and not a nowcast."
+                        )
             continue
         if path not in PAID_PATHS:
             continue

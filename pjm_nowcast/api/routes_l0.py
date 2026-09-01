@@ -101,9 +101,34 @@ def well_known_resources(request: Request):
     return JSONResponse(x402_resources(request.app.state.settings))
 
 
-@router.get("/v1/demo/sample", summary="Fixed demo sample", tags=["free"])
-def demo_sample(request: Request):
-    settings: Settings = request.app.state.settings
-    if not settings.free_demo_enabled:
-        return error_response(404, "not_found", "Demo sample is disabled.")
+@router.get(
+    "/v1/demo/sample",
+    summary="Fetch a synthetic unpaid nowcast sample fixture",
+    tags=["free"],
+)
+def demo_sample():
     return JSONResponse(load_demo_sample())
+
+
+_DEMO_POST_MESSAGE = (
+    "Do not POST /v1/demo/sample. Use GET for the synthetic unpaid fixture. "
+    "Paid nowcast routes are POST /v1/nowcast/latest, /v1/nowcast/history, "
+    "and /v1/nowcast/history/extended."
+)
+
+
+@router.post("/v1/demo/sample", include_in_schema=False)
+@router.put("/v1/demo/sample", include_in_schema=False)
+@router.patch("/v1/demo/sample", include_in_schema=False)
+@router.delete("/v1/demo/sample", include_in_schema=False)
+def demo_sample_method_not_allowed():
+    return JSONResponse(
+        status_code=405,
+        content={
+            "error": "method_not_allowed",
+            "message": _DEMO_POST_MESSAGE,
+            "path": "/v1/demo/sample",
+            "allow": ["GET"],
+        },
+        headers={"Allow": "GET"},
+    )

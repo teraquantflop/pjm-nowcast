@@ -114,8 +114,8 @@ def tool_catalog(settings: Settings) -> list[dict[str, Any]]:
         {
             "name": "demo_sample",
             "description": (
-                "Free fixed sample payload (GET /v1/demo/sample). "
-                "Does not read the live store. paymentStatus=free."
+                "GET /v1/demo/sample unpaid synthetic fixture for schema inspection. "
+                "Not live PJM and not a nowcast. paymentStatus=free."
             ),
             "inputSchema": {"type": "object", "properties": {}},
             "outputSchema": _FREE_OUTPUT_SCHEMA,
@@ -344,8 +344,6 @@ def _call_tool(request: Request, settings: Settings, params: dict[str, Any]) -> 
     if name == "service_info":
         return _text_result(_with_status(service_card(settings), "free"))
     if name == "demo_sample":
-        if not settings.free_demo_enabled:
-            return _text_result({"error": "not_found"}, is_error=True)
         return _text_result(_with_status(load_demo_sample(), "free"))
     if name == "nowcast_latest":
         body = assemble_latest(store, settings, families=args.get("families"))

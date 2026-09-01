@@ -33,8 +33,25 @@ def test_demo_does_not_need_db(client, store):
     assert store.count() == 0
     r = client.get("/v1/demo/sample")
     assert r.status_code == 200
-    assert r.json()["product"] == "pjm-nowcast"
+    body = r.json()
+    assert body["product"] == "pjm-nowcast"
+    assert body["demo"] is True
+    assert body["synthetic"] is True
+    assert str(body.get("asOf", "")).startswith("1900")
+    assert str(body.get("requestId", "")).startswith("demo-")
     assert store.count() == 0
+
+
+def test_demo_post_is_405_json(client):
+    r = client.post("/v1/demo/sample", json={})
+    assert r.status_code == 405
+    allow = r.headers.get("allow") or r.headers.get("Allow") or ""
+    assert "GET" in allow.upper()
+    body = r.json()
+    assert body["error"] == "method_not_allowed"
+    assert "Do not POST /v1/demo/sample" in body["message"]
+    assert body["allow"] == ["GET"]
+    assert body["path"] == "/v1/demo/sample"
 
 
 def test_favicon_ico(client):

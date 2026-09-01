@@ -22,6 +22,16 @@ def test_root_service_card_unchanged(client):
     assert "openapi" not in card
 
 
+def test_demo_sample_openapi_is_unpaid_fetch(client):
+    spec = client.get("/openapi.json").json()
+    get = spec["paths"]["/v1/demo/sample"]["get"]
+    assert get.get("security") == []
+    assert get["summary"] == "Fetch a synthetic unpaid nowcast sample fixture"
+    assert 24 <= len(get["summary"]) <= 63
+    assert "402" not in get.get("responses", {})
+    assert "post" not in spec["paths"]["/v1/demo/sample"]
+
+
 def test_free_routes_have_empty_security(client):
     spec = client.get("/openapi.json").json()
     for path in FREE:

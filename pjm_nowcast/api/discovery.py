@@ -244,7 +244,10 @@ def service_card(settings: Settings) -> dict:
                 "method": "GET",
                 "path": "/v1/demo/sample",
                 "price": "free",
-                "description": "Fixed sample payload. Does not read the live store.",
+                "description": (
+                    "Unpaid synthetic fixture for schema inspection only. "
+                    "Not live PJM and not a nowcast. Paid routes are POST /v1/nowcast/*."
+                ),
             },
             {
                 "tier": "L0",
@@ -388,6 +391,7 @@ def skill_markdown(settings: Settings) -> str:
             "- GET /swagger.json",
             "- GET /llms.txt",
             "- GET /llm.txt",
+            "- GET /v1/demo/sample — unpaid synthetic fixture for schema inspection only; not live PJM",
             "- GET /.well-known/x402",
             "- GET /.well-known/llms.txt",
             "",
@@ -433,7 +437,7 @@ def llms_txt(settings: Settings) -> str:
                 f"- Transport: Streamable HTTP JSON-RPC",
                 f"- URL: {mcp['url']}",
                 "- Connect: POST JSON-RPC (`initialize`, `tools/list`, `tools/call`). No API key for discovery.",
-                "- Free tools: health, service_info, demo_sample",
+                "- Free tools: health, service_info, demo_sample (GET /v1/demo/sample unpaid synthetic fixture, not live PJM)",
                 "- Paid tools: nowcast_latest, nowcast_history, nowcast_history_extended (x402 exact USDC; unpaid → paymentStatus=required)",
             ]
         )
@@ -443,6 +447,7 @@ def llms_txt(settings: Settings) -> str:
         [
             "",
             "## Free discovery",
+            "- GET /v1/demo/sample is an unpaid synthetic fixture for schema inspection only; not live PJM and not a nowcast.",
         ]
     )
     for path in FREE_DISCOVERY_PATHS:
@@ -481,6 +486,7 @@ def well_known_x402(settings: Settings) -> dict:
     free_paths = (
         "/",
         "/health",
+        "/v1/demo/sample",
         "/openapi.json",
         "/swagger.json",
         "/llms.txt",
@@ -548,6 +554,14 @@ def agent_card(settings: Settings) -> dict[str, Any]:
             "path": "/health",
             "price": "free",
             "paid": False,
+        },
+        {
+            "name": "demo_sample",
+            "method": "GET",
+            "path": "/v1/demo/sample",
+            "price": "free",
+            "paid": False,
+            "description": "Unpaid synthetic fixture for schema inspection. Not live PJM.",
         },
         {
             "name": "nowcast_latest",
