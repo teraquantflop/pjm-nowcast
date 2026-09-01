@@ -88,7 +88,7 @@ def match_paid_path(path: str) -> str | None:
 
 
 def pay_to_by_network(settings: Settings) -> dict[str, str]:
-    """Public receive addresses keyed by CAIP-2 network. No aliases across chains."""
+    """Receive addresses keyed by CAIP-2. Internal / header challenge only."""
     nets = set(settings.network_list)
     out: dict[str, str] = {}
     if settings.svm_pay_to and SOLANA_NETWORK in nets:
@@ -98,3 +98,24 @@ def pay_to_by_network(settings: Settings) -> dict[str, str]:
     if settings.poly_pay_to and POLYGON_NETWORK in nets:
         out[POLYGON_NETWORK] = settings.poly_pay_to
     return out
+
+
+def public_network_names(settings: Settings) -> list[str]:
+    """Short names for free catalogs. Never CAIP genesis hashes or addresses."""
+    names: list[str] = []
+    for n in settings.network_list:
+        if n == SOLANA_NETWORK or n.startswith("solana:"):
+            label = "solana"
+        elif n == BASE_NETWORK:
+            label = "base"
+        elif n == POLYGON_NETWORK:
+            label = "polygon"
+        else:
+            continue
+        if label not in names:
+            names.append(label)
+    return names
+
+
+def payment_configured(settings: Settings) -> bool:
+    return bool(pay_to_by_network(settings))

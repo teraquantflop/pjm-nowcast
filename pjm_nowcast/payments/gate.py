@@ -360,8 +360,17 @@ def _free_tier_allows(store: Store, settings: Settings, path: str, ip: str) -> b
 
 async def _send_402(send: Send, settings: Settings, path: str) -> None:
     payload = payment_required_payload(settings, path)
-    raw = json.dumps(payload).encode("utf-8")
-    encoded = base64.b64encode(raw).decode("ascii")
+    encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
+    body = {
+        "error": "payment_required",
+        "message": (
+            "Decode the PAYMENT-REQUIRED header for x402 exact USDC terms."
+        ),
+        "path": path,
+        "method": "POST",
+    }
+    raw = json.dumps(body).encode("utf-8")
+    log.info("402 path=%s", path)
     await send(
         {
             "type": "http.response.start",

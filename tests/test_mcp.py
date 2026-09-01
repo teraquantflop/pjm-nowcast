@@ -35,7 +35,7 @@ def test_mcp_service_info_free(client):
         assert x402["scheme"] == "exact"
         assert x402["asset"] == "USDC"
         assert x402["price"].startswith("$")
-        assert "solana:" in "".join(x402["networks"])
+        assert "solana" in x402["networks"]
         assert x402["httpPath"].startswith("/v1/nowcast/")
         assert "families" in tool["inputSchema"]["properties"]
         assert "required" not in tool["inputSchema"] or tool["inputSchema"]["required"] == []
@@ -140,11 +140,9 @@ def test_mcp_unpaid_paid_tool_surfaces_402_body(paid_mcp_client):
     assert result["isError"] is True
     body = result["structuredContent"]
     assert body["paymentStatus"] == "required"
-    assert body["error"] == "Payment required"
-    assert "paymentRequired" in body
-    accepts = body["paymentRequired"]["accepts"]
-    assert accepts
-    assert all(a["scheme"] == "exact" for a in accepts)
+    assert body["error"] == "payment_required"
+    assert "paymentRequired" not in body
+    assert body["httpPath"] == "/v1/nowcast/latest"
 
 
 def test_http_paid_still_402(paid_mcp_client):

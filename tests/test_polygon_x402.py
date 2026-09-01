@@ -112,10 +112,12 @@ def test_health_lists_polygon(poly_client):
     health = poly_client.get("/health").json()
     assert health["facilitators"]["polygon"] == "payai"
     assert health["facilitators"]["solana"] == "payai"
-    assert POLYGON_NETWORK in health["networks"]
-    assert health["payToByNetwork"][POLYGON_NETWORK] == POLY
-    assert health["payToByNetwork"][BASE_NETWORK] == EVM
-    assert health["payToByNetwork"][SOLANA_NETWORK] == SVM
+    assert "polygon" in health["networks"]
+    assert "base" in health["networks"]
+    assert "solana" in health["networks"]
+    assert health["paymentConfigured"] is True
+    assert "payToByNetwork" not in health
+    assert POLY.lower() not in str(health).lower()
 
 
 def test_well_known_agent_and_resources(poly_client):
@@ -126,8 +128,8 @@ def test_well_known_agent_and_resources(poly_client):
     assert body["version"]
     assert body["url"] == "http://testserver"
     assert body["facilitator"]
-    assert POLYGON_NETWORK in body["networks"]
-    assert body["payToByNetwork"][POLYGON_NETWORK] == POLY
+    assert "polygon" in body["networks"]
+    assert "payToByNetwork" not in body
     names = {t["name"] for t in body["tools"]}
     assert "nowcast_latest" in names
     paid = [t for t in body["tools"] if t.get("paid")]
@@ -150,19 +152,20 @@ def test_well_known_agent_and_resources(poly_client):
     assert latest["method"] == "POST"
     assert latest["price"] == "$0.02"
     assert latest["scheme"] == "exact"
-    assert POLYGON_NETWORK in latest["networks"]
-    assert latest["payToByNetwork"][POLYGON_NETWORK] == POLY
+    assert "polygon" in latest["networks"]
+    assert "payToByNetwork" not in latest
     assert "inputSchema" in latest
 
     wk = poly_client.get("/.well-known/x402")
     assert wk.status_code == 200
-    assert wk.json()["payToByNetwork"][POLYGON_NETWORK] == POLY
+    assert "polygon" in wk.json()["networks"]
+    assert "payToByNetwork" not in wk.json()
 
 
 def test_root_and_mcp_advertise_polygon(poly_client):
     card = poly_client.get("/").json()
-    assert POLYGON_NETWORK in card["networks"]
-    assert card["payToByNetwork"][POLYGON_NETWORK] == POLY
+    assert "polygon" in card["networks"]
+    assert "payToByNetwork" not in card
     listed = poly_client.post(
         "/mcp",
         json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"},
@@ -170,7 +173,5 @@ def test_root_and_mcp_advertise_polygon(poly_client):
     assert listed.status_code == 200
     tools = {t["name"]: t for t in listed.json()["result"]["tools"]}
     meta = tools["nowcast_latest"]["_meta"]["x402"]
-    assert POLYGON_NETWORK in meta["networks"]
-    assert meta["payToByNetwork"][POLYGON_NETWORK] == POLY
-    assert meta["payToByNetwork"][BASE_NETWORK] == EVM
-    assert meta["payToByNetwork"][SOLANA_NETWORK] == SVM
+    assert "polygon" in meta["networks"]
+    assert "payToByNetwork" not in meta

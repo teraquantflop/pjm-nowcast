@@ -58,8 +58,11 @@ def test_empty_json_object_is_402_with_atomic_amounts(enforcing_client):
         assert r.status_code == 402, path
         challenge = _challenge(r)
         body = r.json()
-        assert body["accepts"]
-        assert challenge["accepts"] == body["accepts"]
+        assert body["error"] == "payment_required"
+        assert body["path"] == path
+        assert "accepts" not in body
+        assert "payTo" not in str(body)
+        assert challenge["accepts"]
         assert challenge["x402Version"] == 2
         assert isinstance(challenge["resource"], dict)
         assert challenge["resource"]["url"] == f"http://testserver{path}"

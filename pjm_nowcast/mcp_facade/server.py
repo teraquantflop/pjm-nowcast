@@ -10,10 +10,9 @@ from fastapi.responses import JSONResponse
 
 from pjm_nowcast import DISCLAIMER, __version__
 from pjm_nowcast.api.discovery import health_payload, load_demo_sample, mcp_mount, service_card
-from pjm_nowcast.payments.gate import payment_required_payload
 from pjm_nowcast.payments.optionbook import HEADER as OPTIONBOOK_HEADER
 from pjm_nowcast.payments.optionbook import header_matches
-from pjm_nowcast.payments.routes import pay_to_by_network, price_for
+from pjm_nowcast.payments.routes import price_for, public_network_names
 from pjm_nowcast.settings import Settings
 from pjm_nowcast.stats.assemble import assemble_history, assemble_latest
 
@@ -37,10 +36,8 @@ _PAID_OUTPUT_SCHEMA = {
     "properties": {
         "paymentStatus": {"enum": ["paid", "required"]},
         "error": {"type": "string"},
-        "paymentRequired": {
-            "type": "object",
-            "description": "Same 402 challenge body as HTTP PAYMENT-REQUIRED (decoded).",
-        },
+        "httpPath": {"type": "string"},
+        "message": {"type": "string"},
         "disclaimer": {"type": "string"},
         "product": {"type": "string"},
         "asOf": {"type": "string"},
@@ -60,15 +57,14 @@ _FREE_OUTPUT_SCHEMA = {
 
 def _paid_description(settings: Settings, path: str, lead: str) -> str:
     price = price_for(path, settings)
-    nets = ", ".join(settings.network_list)
+    nets = ", ".join(public_network_names(settings))
     return (
         lead
         + _PAYLOAD_BLURB
         + DISCLAIMER
-        + f" Payment: x402 exact USDC on {nets}. Price {price}. "
-        "Without payment the tool result is paymentStatus=required plus a "
-        "paymentRequired 402 body (same facilitator/terms as HTTP POST of this path). "
-        "HTTP POST of the matching route still returns 402."
+        + f" Payment: x402 USDC exact on configured networks ({nets}). Price {price}. "
+        "Without payment the tool result is paymentStatus=required. "
+        "POST the matching HTTP path and decode the PAYMENT-REQUIRED header."
     )
 
 
@@ -77,10 +73,9 @@ def _x402_meta(settings: Settings, path: str) -> dict[str, Any]:
         "scheme": "exact",
         "asset": "USDC",
         "price": price_for(path, settings),
-        "networks": list(settings.network_list),
-        "payToByNetwork": pay_to_by_network(settings),
+        "networks": public_network_names(settings),
         "httpPath": path,
-        "unpaid": "paymentStatus=required and paymentRequired in the tool result",
+        "unpaid": "paymentStatus=required; POST httpPath and decode PAYMENT-REQUIRED",
     }
 
 
@@ -327,13 +322,16 @@ def _call_tool(request: Request, settings: Settings, params: dict[str, Any]) -> 
     if tool.get("paid") and not settings.x402_disabled:
         if not _has_mcp_payment(request, settings, params):
             path = tool["http_path"]
-            required = payment_required_payload(settings, path)
             return _text_result(
                 {
-                    "error": "Payment required",
+                    "error": "payment_required",
                     "paymentStatus": "required",
-                    "paymentRequired": required,
-                    "disclaimer": DISCLAIMER,
+                    "message": (
+                        "POST the matching HTTP path and decode the "
+                        "PAYMENT-REQUIRED header. x402 USDC exact on configured networks."
+                    ),
+                    "httpPath": path,
+                    "method": "POST",
                 },
                 is_error=True,
             )

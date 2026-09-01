@@ -7,7 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from pjm_nowcast import DISCLAIMER, __version__
-from pjm_nowcast.payments.routes import PAID_DESCRIPTIONS, PAID_ROUTES, pay_to_by_network, price_for
+from pjm_nowcast.payments.routes import (
+    PAID_DESCRIPTIONS,
+    PAID_ROUTES,
+    payment_configured,
+    price_for,
+    public_network_names,
+)
 from pjm_nowcast.settings import Settings
 
 DEMO_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "demo" / "sample.json"
@@ -127,8 +133,8 @@ def health_payload(settings: Settings, store: Any) -> dict[str, Any]:
         "status": status,
         "db": "ok",
         "facilitators": settings.facilitator_status(),
-        "networks": list(settings.network_list),
-        "payToByNetwork": pay_to_by_network(settings),
+        "networks": public_network_names(settings),
+        "paymentConfigured": payment_configured(settings),
         "poller": {
             "lastSuccessAt": poll.get("lastSuccessAt"),
             "lastError": poll.get("lastError"),
@@ -211,8 +217,7 @@ def service_card(settings: Settings) -> dict:
         "tags": TAGS,
         "iconUrl": settings.public_icon_url or f"{base}/favicon.ico",
         "timezone": "America/New_York",
-        "networks": settings.network_list,
-        "payToByNetwork": pay_to_by_network(settings),
+        "networks": public_network_names(settings),
         "facilitators": settings.facilitator_status(),
         "prices": prices,
         "mcp": mcp_mount(settings),
@@ -382,7 +387,7 @@ def skill_markdown(settings: Settings) -> str:
             f"Base URL: {base}",
             mcp_line,
             "",
-            "Pay: x402 exact USDC on Solana, Base, and Polygon. Unpaid paid routes return HTTP 402 with a PAYMENT-REQUIRED header. Unpaid MCP paid tools return paymentStatus=required and the same paymentRequired body.",
+            "Pay: x402 USDC exact on configured networks. Unpaid paid routes return HTTP 402; decode the PAYMENT-REQUIRED header. Unpaid MCP paid tools return paymentStatus=required.",
             "",
             "Free:",
             "- GET /",
@@ -455,7 +460,7 @@ def llms_txt(settings: Settings) -> str:
     lines.extend(
         [
             "",
-            "## Paid (x402 exact USDC, Solana + Base)",
+            "## Paid (x402 USDC exact on configured networks)",
             f"- POST /v1/nowcast/latest — {settings.price_l1} — MCP nowcast_latest",
             f"- POST /v1/nowcast/history — {settings.price_l2} — MCP nowcast_history",
             f"- POST /v1/nowcast/history/extended — {settings.price_l3} — MCP nowcast_history_extended",
@@ -510,8 +515,7 @@ def well_known_x402(settings: Settings) -> dict:
         "llm": f"{base}/llm.txt",
         "scheme": "exact",
         "asset": "USDC",
-        "networks": list(settings.network_list),
-        "payToByNetwork": pay_to_by_network(settings),
+        "networks": public_network_names(settings),
         "facilitators": settings.facilitator_status(),
         "mcp": mcp,
         "resources": [
@@ -591,8 +595,7 @@ def agent_card(settings: Settings) -> dict[str, Any]:
         "version": __version__,
         "url": base,
         "facilitator": settings.facilitator_url,
-        "networks": list(settings.network_list),
-        "payToByNetwork": pay_to_by_network(settings),
+        "networks": public_network_names(settings),
         "mcp": mcp,
         "tools": tools,
     }
@@ -623,8 +626,7 @@ def x402_resources(settings: Settings) -> dict[str, Any]:
                 "price": price_for(path, settings),
                 "scheme": "exact",
                 "asset": "USDC",
-                "networks": list(settings.network_list),
-                "payToByNetwork": pay_to_by_network(settings),
+                "networks": public_network_names(settings),
                 "description": PAID_DESCRIPTIONS.get(path, ""),
                 "inputSchema": schemas.get(path, {}),
             }

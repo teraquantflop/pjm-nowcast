@@ -58,26 +58,11 @@ def test_only_three_paid_nowcast_posts_have_payment_docs(client):
         assert info["asset"] == "USDC"
         assert info["price"] == price_for(path, client.app.state.settings)
         assert info["facilitator"] == client.app.state.settings.facilitator_url
-        assert info["networks"] == client.app.state.settings.network_list
-        from pjm_nowcast.payments.routes import usdc_atomic_amount
+        from pjm_nowcast.payments.routes import public_network_names
 
-        atomic = usdc_atomic_amount(info["price"])
-        assert isinstance(info["resource"], dict)
-        assert info["resource"]["url"].endswith(path)
-        for acc in info["accepts"]:
-            assert acc["amount"] == atomic
-            assert acc["maxAmountRequired"] == atomic
-            assert acc["maxTimeoutSeconds"] == 60
-            assert acc["price"] == info["price"]
-            assert acc["scheme"] == "exact"
-            if acc["network"] == "eip155:8453":
-                assert acc["asset"] == "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"
-                assert acc["extra"]["name"] == "USD Coin"
-                assert acc["extra"]["version"] == "2"
-            if acc["network"] == "eip155:137":
-                assert acc["asset"] == "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359"
-                assert acc["extra"]["name"] == "USD Coin"
-                assert acc["extra"]["version"] == "2"
+        assert info["networks"] == public_network_names(client.app.state.settings)
+        assert "accepts" not in info
+        assert "resource" not in info
 
 
 def test_mcp_not_in_openapi(client):
@@ -93,7 +78,6 @@ def test_openapi_catalog_omits_payto(client):
     assert "payTo" not in dumped
     assert "pay_to" not in dumped
     for path in PAID:
-        accepts = spec["paths"][path]["post"]["x-payment-info"]["accepts"]
-        for item in accepts:
-            assert "payTo" not in item
-            assert "pay_to" not in item
+        info = spec["paths"][path]["post"]["x-payment-info"]
+        assert "accepts" not in info
+        assert "payTo" not in str(info)

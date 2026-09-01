@@ -129,7 +129,8 @@ def test_llms_robots_well_known(client):
     assert wk.status_code == 200
     assert wk_json.status_code == 200
     assert wk.json() == wk_json.json()
-    assert "payToByNetwork" in wk.json()
+    assert "payToByNetwork" not in wk.json()
+    assert "polygon" in wk.json()["networks"] or "solana" in wk.json()["networks"]
     assert wk.json()["mcp"]["url"].endswith("/mcp")
     card = client.get("/").json()
     paths = {e["path"] for e in card["endpoints"]}

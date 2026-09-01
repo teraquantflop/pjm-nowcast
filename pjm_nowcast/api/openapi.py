@@ -19,8 +19,7 @@ from pjm_nowcast.api.schemas import (
     HistoryRequest,
     LatestRequest,
 )
-from pjm_nowcast.payments.gate import payment_required_payload
-from pjm_nowcast.payments.routes import PAID_ROUTES, price_for
+from pjm_nowcast.payments.routes import PAID_ROUTES, price_for, public_network_names
 from pjm_nowcast.settings import Settings
 
 FREE_PATHS = {
@@ -68,26 +67,15 @@ _REQUEST_MODELS = {
 }
 
 
-def _catalog_accepts(accepts: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """OpenAPI is a free catalog — omit receiving addresses."""
-    out = []
-    for item in accepts:
-        copy = {k: v for k, v in item.items() if k not in {"payTo", "pay_to"}}
-        out.append(copy)
-    return out
-
-
 def payment_info(settings: Settings, path: str) -> dict[str, Any]:
-    """Document terms for agents. Wallets stay off this free document."""
-    payload = payment_required_payload(settings, path)
+    """Document terms for agents. No wallets or full challenge blob."""
     return {
         "scheme": "exact",
         "asset": "USDC",
         "price": price_for(path, settings),
         "facilitator": settings.facilitator_url,
-        "networks": list(settings.network_list),
-        "resource": payload["resource"],
-        "accepts": _catalog_accepts(payload["accepts"]),
+        "networks": public_network_names(settings),
+        "note": "x402 USDC exact on configured networks. Decode PAYMENT-REQUIRED on unpaid POST.",
     }
 
 
