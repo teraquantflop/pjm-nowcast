@@ -10,6 +10,9 @@ PAID_ROUTES: dict[str, str] = {
     "/v1/nowcast/latest": "l1",
     "/v1/nowcast/history": "l2",
     "/v1/nowcast/history/extended": "l3",
+    "/v1/nowcast/regime": "l1",
+    "/v1/nowcast/spreads": "l1",
+    "/v1/nowcast/asof": "l1",
 }
 
 FREE_TIER_ELIGIBLE = {"/v1/nowcast/latest"}
@@ -23,6 +26,15 @@ PAID_DESCRIPTIONS: dict[str, str] = {
     ),
     "/v1/nowcast/history/extended": (
         "Extended descriptive history within the retention window."
+    ),
+    "/v1/nowcast/regime": (
+        "HMM regime snapshot: entropy, posteriors, kStar, asOf, ageSeconds."
+    ),
+    "/v1/nowcast/spreads": (
+        "Zone-level LMP spread table for the latest print. No history dump."
+    ),
+    "/v1/nowcast/asof": (
+        "Descriptive snapshot pinned to a historical asOf. Fail closed if missing."
     ),
 }
 

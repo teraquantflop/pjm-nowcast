@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from pjm_nowcast import DISCLAIMER, __version__
+from pjm_nowcast.api.access_log import AccessLogMiddleware
 from pjm_nowcast.api.openapi import install_openapi
 from pjm_nowcast.api.routes_l0 import router as l0_router
 from pjm_nowcast.api.routes_nowcast import router as nowcast_router
@@ -70,12 +71,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=settings.cors_origins,
-            allow_methods=["GET", "POST", "OPTIONS"],
+            allow_methods=["GET", "HEAD", "POST", "OPTIONS"],
             allow_headers=["*"],
-            expose_headers=["PAYMENT-REQUIRED", "PAYMENT-RESPONSE"],
+            expose_headers=["PAYMENT-REQUIRED", "PAYMENT-RESPONSE", "X-Request-Id"],
         )
 
     app.add_middleware(PaymentGateMiddleware, settings=settings, store=store)
+    app.add_middleware(AccessLogMiddleware)
 
     app.include_router(l0_router)
     app.include_router(nowcast_router)

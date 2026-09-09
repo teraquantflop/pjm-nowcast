@@ -51,6 +51,16 @@ class ExtendedHistoryRequest(BaseModel):
     )
 
 
+class EmptyNowcastRequest(BaseModel):
+    pass
+
+
+class AsofRequest(BaseModel):
+    asOf: str = Field(
+        description="ISO-8601 observation clock. Required. No interpolation.",
+    )
+
+
 class ErrorBody(BaseModel):
     error: str
     message: str

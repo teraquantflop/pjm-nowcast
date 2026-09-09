@@ -152,6 +152,21 @@ class Store:
                 return None
             return self._hydrate(row)
 
+    def at_or_before(self, ts: datetime) -> Observation | None:
+        with self._lock:
+            row = self._conn.execute(
+                """
+                SELECT * FROM observations
+                WHERE ts <= ?
+                ORDER BY ts DESC, id DESC
+                LIMIT 1
+                """,
+                (_iso(ts),),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._hydrate(row)
+
     def observations_since(self, start: datetime, end: datetime | None = None) -> list[Observation]:
         params: list[Any] = [_iso(start)]
         sql = "SELECT * FROM observations WHERE ts >= ?"

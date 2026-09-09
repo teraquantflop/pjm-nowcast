@@ -41,6 +41,15 @@ WHEN_NOT_TO_USE = (
 )
 
 TAGS = ["pjm", "lmp", "load", "spread", "electricity"]
+JOB_TAGS = ["mark", "realized_vol", "regime", "spreads", "asof"]
+
+MCP_ACCEPT = "application/json, text/event-stream"
+MCP_CURL = (
+    "curl -sS -H 'Accept: application/json, text/event-stream' "
+    "-H 'Content-Type: application/json' "
+    "-d '{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{}}' "
+    "$PUBLIC_BASE_URL/mcp"
+)
 
 # Free discovery surfaces (not new paid URLs).
 FREE_DISCOVERY_PATHS = (
@@ -61,6 +70,7 @@ FREE_DISCOVERY_PATHS = (
     "/robots.txt",
     "/v1/discovery",
     "/v1/demo/sample",
+    "/v1/capabilities",
 )
 
 # Agent-facing only (llms.txt / skill.md). Keep off GET / — isolation tests.
@@ -103,6 +113,8 @@ def mcp_mount(settings: Settings) -> dict[str, Any] | None:
         "url": f"{public_base(settings)}{path}",
         "transport": "streamable-http",
         "protocolVersion": "2024-11-05",
+        "accept": MCP_ACCEPT,
+        "curl": MCP_CURL.replace("$PUBLIC_BASE_URL", public_base(settings)),
     }
 
 
@@ -145,6 +157,53 @@ def health_payload(settings: Settings, store: Any) -> dict[str, Any]:
             ),
         },
         "data": data,
+    }
+
+
+def capabilities_payload(settings: Settings) -> dict[str, Any]:
+    return {
+        "name": "pjm-nowcast",
+        "disclaimer": DISCLAIMER,
+        "windows": {
+            "latestHours": settings.default_l1_window_hours,
+            "historyHoursMax": settings.l2_max_hours,
+            "extendedHoursMax": settings.l3_max_hours,
+        },
+        "zones": list(settings.zone_list),
+        "fields": [
+            "rtoLmp",
+            "zonalSpread",
+            "rtoLoad",
+            "price_vol",
+            "price_vol_missing",
+            "mix_std_price",
+            "mix_n_obs",
+            "asOf",
+            "ageSeconds",
+            "stale",
+            "entropy",
+            "posteriors",
+            "kStar",
+        ],
+        "freshness": {
+            "staleAfterSeconds": settings.stale_after_seconds,
+        },
+        "networks": public_network_names(settings),
+        "prices": {
+            "POST /v1/nowcast/latest": settings.price_l1,
+            "POST /v1/nowcast/history": settings.price_l2,
+            "POST /v1/nowcast/history/extended": settings.price_l3,
+            "POST /v1/nowcast/regime": settings.price_l1,
+            "POST /v1/nowcast/spreads": settings.price_l1,
+            "POST /v1/nowcast/asof": settings.price_l1,
+        },
+        "maxSizes": {
+            "historyHours": settings.l2_max_hours,
+            "extendedHours": settings.l3_max_hours,
+            "retentionDays": settings.retention_days,
+        },
+        "jobTags": list(JOB_TAGS),
+        "notAForecast": True,
     }
 
 
@@ -215,6 +274,7 @@ def service_card(settings: Settings) -> dict:
         "disclaimer": DISCLAIMER,
         "publicBaseUrl": base,
         "tags": TAGS,
+        "jobTags": list(JOB_TAGS),
         "iconUrl": settings.public_icon_url or f"{base}/favicon.ico",
         "timezone": "America/New_York",
         "networks": public_network_names(settings),
@@ -253,6 +313,13 @@ def service_card(settings: Settings) -> dict:
                     "Unpaid synthetic fixture for schema inspection only. "
                     "Not live PJM and not a nowcast. Paid routes are POST /v1/nowcast/*."
                 ),
+            },
+            {
+                "tier": "L0",
+                "method": "GET",
+                "path": "/v1/capabilities",
+                "price": "free",
+                "description": "Machine matrix: windows, zones, fields, networks, prices.",
             },
             {
                 "tier": "L0",
@@ -367,6 +434,33 @@ def service_card(settings: Settings) -> dict:
                     "compare": "prior_period",
                 },
             },
+            {
+                "tier": "L1",
+                "method": "POST",
+                "path": "/v1/nowcast/regime",
+                "price": settings.price_l1,
+                "description": (
+                    "Paid latent-state snapshot with asOf and ageSeconds. "
+                    "Descriptive only. Not a forecast."
+                ),
+            },
+            {
+                "tier": "L1",
+                "method": "POST",
+                "path": "/v1/nowcast/spreads",
+                "price": settings.price_l1,
+                "description": "Paid zone-level spread table for the latest print. No history dump.",
+            },
+            {
+                "tier": "L1",
+                "method": "POST",
+                "path": "/v1/nowcast/asof",
+                "price": settings.price_l1,
+                "description": (
+                    "Paid descriptive snapshot pinned to asOf. Fail closed if missing."
+                ),
+                "exampleRequest": {"asOf": "2026-08-01T16:00:00-04:00"},
+            },
         ],
     }
     card["endpoints"] = [e for e in card["endpoints"] if e]
@@ -442,8 +536,10 @@ def llms_txt(settings: Settings) -> str:
                 f"- Transport: Streamable HTTP JSON-RPC",
                 f"- URL: {mcp['url']}",
                 "- Connect: POST JSON-RPC (`initialize`, `tools/list`, `tools/call`). No API key for discovery.",
+                f"- Accept: {MCP_ACCEPT}",
+                f"- Example: {MCP_CURL.replace('$PUBLIC_BASE_URL', base)}",
                 "- Free tools: health, service_info, demo_sample (GET /v1/demo/sample unpaid synthetic fixture, not live PJM)",
-                "- Paid tools: nowcast_latest, nowcast_history, nowcast_history_extended (x402 exact USDC; unpaid → paymentStatus=required)",
+                "- Paid tools: nowcast_latest, nowcast_history, nowcast_history_extended, nowcast_regime, nowcast_spreads, nowcast_asof (x402 USDC exact; unpaid → paymentStatus=required). Gate on stale/ageSeconds.",
             ]
         )
     else:
@@ -464,6 +560,9 @@ def llms_txt(settings: Settings) -> str:
             f"- POST /v1/nowcast/latest — {settings.price_l1} — MCP nowcast_latest",
             f"- POST /v1/nowcast/history — {settings.price_l2} — MCP nowcast_history",
             f"- POST /v1/nowcast/history/extended — {settings.price_l3} — MCP nowcast_history_extended",
+            f"- POST /v1/nowcast/regime — {settings.price_l1} — MCP nowcast_regime",
+            f"- POST /v1/nowcast/spreads — {settings.price_l1} — MCP nowcast_spreads",
+            f"- POST /v1/nowcast/asof — {settings.price_l1} — MCP nowcast_asof",
             "",
             "## Notes",
             AGENT_NOTES,
@@ -492,6 +591,7 @@ def well_known_x402(settings: Settings) -> dict:
         "/",
         "/health",
         "/v1/demo/sample",
+        "/v1/capabilities",
         "/openapi.json",
         "/swagger.json",
         "/llms.txt",
@@ -516,6 +616,7 @@ def well_known_x402(settings: Settings) -> dict:
         "scheme": "exact",
         "asset": "USDC",
         "networks": public_network_names(settings),
+        "jobTags": list(JOB_TAGS),
         "facilitators": settings.facilitator_status(),
         "mcp": mcp,
         "resources": [
@@ -524,7 +625,32 @@ def well_known_x402(settings: Settings) -> dict:
                 "method": "POST",
                 "price": settings.price_l1,
                 "mcpTool": "nowcast_latest",
-                "description": "Latest load, RTO LMP, and zonal LMP descriptive snapshot.",
+                "tags": ["mark", "realized_vol"],
+                "description": "Latest load, RTO LMP, zonal LMP, price_vol, mix_std_price.",
+            },
+            {
+                "url": f"{base}/v1/nowcast/regime",
+                "method": "POST",
+                "price": settings.price_l1,
+                "mcpTool": "nowcast_regime",
+                "tags": ["regime"],
+                "description": "Latent-state snapshot with asOf and ageSeconds.",
+            },
+            {
+                "url": f"{base}/v1/nowcast/spreads",
+                "method": "POST",
+                "price": settings.price_l1,
+                "mcpTool": "nowcast_spreads",
+                "tags": ["spreads"],
+                "description": "Zone-level spread table.",
+            },
+            {
+                "url": f"{base}/v1/nowcast/asof",
+                "method": "POST",
+                "price": settings.price_l1,
+                "mcpTool": "nowcast_asof",
+                "tags": ["asof", "mark"],
+                "description": "Descriptive snapshot pinned to asOf.",
             },
             {
                 "url": f"{base}/v1/nowcast/history",
@@ -586,6 +712,27 @@ def agent_card(settings: Settings) -> dict[str, Any]:
             "method": "POST",
             "path": "/v1/nowcast/history/extended",
             "price": settings.price_l3,
+            "paid": True,
+        },
+        {
+            "name": "nowcast_regime",
+            "method": "POST",
+            "path": "/v1/nowcast/regime",
+            "price": settings.price_l1,
+            "paid": True,
+        },
+        {
+            "name": "nowcast_spreads",
+            "method": "POST",
+            "path": "/v1/nowcast/spreads",
+            "price": settings.price_l1,
+            "paid": True,
+        },
+        {
+            "name": "nowcast_asof",
+            "method": "POST",
+            "path": "/v1/nowcast/asof",
+            "price": settings.price_l1,
             "paid": True,
         },
     ]

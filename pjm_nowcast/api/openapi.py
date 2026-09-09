@@ -15,6 +15,8 @@ from fastapi.openapi.utils import get_openapi
 from pjm_nowcast import DISCLAIMER, __version__
 from pjm_nowcast.api.discovery import WHAT_IT_IS, WHAT_IT_IS_NOT
 from pjm_nowcast.api.schemas import (
+    AsofRequest,
+    EmptyNowcastRequest,
     ExtendedHistoryRequest,
     HistoryRequest,
     LatestRequest,
@@ -33,6 +35,7 @@ FREE_PATHS = {
     "/.well-known/x402",
     "/.well-known/agent.json",
     "/.well-known/x402-resources",
+    "/v1/capabilities",
 }
 
 PAID_PATHS = frozenset(PAID_ROUTES)
@@ -41,6 +44,9 @@ PAID_SUMMARIES = {
     "/v1/nowcast/latest": "Latest descriptive snapshot (24h trailing stats)",
     "/v1/nowcast/history": "1–72h descriptive history",
     "/v1/nowcast/history/extended": "Extended descriptive history within retention",
+    "/v1/nowcast/regime": "Latent-state snapshot with asOf and ageSeconds",
+    "/v1/nowcast/spreads": "Zone-level spread table for the latest print",
+    "/v1/nowcast/asof": "Descriptive snapshot pinned to a historical asOf",
 }
 
 PAID_DESCRIPTIONS = {
@@ -58,12 +64,27 @@ PAID_DESCRIPTIONS = {
         "buckets and prior-period comparison. Descriptive only. Unpaid requests "
         "receive 402 with a PAYMENT-REQUIRED header."
     ),
+    "/v1/nowcast/regime": (
+        "HMM entropy, posteriors, and kStar from the poller snapshot, plus asOf "
+        "and ageSeconds. Descriptive only. Not a forecast."
+    ),
+    "/v1/nowcast/spreads": (
+        "Zone-level LMP spread table for the latest print. No history dump. "
+        "Not a forecast."
+    ),
+    "/v1/nowcast/asof": (
+        "Descriptive snapshot for the last print at or before asOf. Fail closed "
+        "if asOf is missing or no row exists. Not a forecast."
+    ),
 }
 
 _REQUEST_MODELS = {
     "/v1/nowcast/latest": LatestRequest,
     "/v1/nowcast/history": HistoryRequest,
     "/v1/nowcast/history/extended": ExtendedHistoryRequest,
+    "/v1/nowcast/regime": EmptyNowcastRequest,
+    "/v1/nowcast/spreads": EmptyNowcastRequest,
+    "/v1/nowcast/asof": AsofRequest,
 }
 
 
@@ -190,15 +211,38 @@ def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, A
                 "type": ["integer", "null"],
                 "description": "Latest only. Observation count paired with mix_std_price.",
             },
+            "entropy": {
+                "type": ["number", "null"],
+                "description": "Regime route. HMM entropy; not a forecast.",
+            },
+            "posteriors": {
+                "type": "array",
+                "items": {"type": "number"},
+                "description": "Regime route. State posteriors.",
+            },
+            "kStar": {
+                "type": ["integer", "null"],
+                "description": "Regime route. Dominant state index.",
+            },
             "windowHours": {"type": "integer"},
             "resolution": {"type": "string"},
             "priorPeriod": {"type": "object"},
+        },
+        "example": {
+            "price_vol": 2.5,
+            "price_vol_missing": False,
+            "mix_std_price": 8.1,
+            "mix_n_obs": 40,
+            "stale": False,
+            "ageSeconds": 120,
         },
     }
     for name, model in (
         ("LatestRequest", LatestRequest),
         ("HistoryRequest", HistoryRequest),
         ("ExtendedHistoryRequest", ExtendedHistoryRequest),
+        ("EmptyNowcastRequest", EmptyNowcastRequest),
+        ("AsofRequest", AsofRequest),
     ):
         comps["schemas"][name] = model.model_json_schema(
             ref_template="#/components/schemas/{model}"

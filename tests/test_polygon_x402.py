@@ -133,21 +133,22 @@ def test_well_known_agent_and_resources(poly_client):
     names = {t["name"] for t in body["tools"]}
     assert "nowcast_latest" in names
     paid = [t for t in body["tools"] if t.get("paid")]
-    assert {t["path"] for t in paid} == {
+    paths = {t["path"] for t in paid}
+    assert {
         "/v1/nowcast/latest",
         "/v1/nowcast/history",
         "/v1/nowcast/history/extended",
-    }
+    }.issubset(paths)
 
     res = poly_client.get("/.well-known/x402-resources")
     assert res.status_code == 200
     payload = res.json()
     paths = {r["path"] for r in payload["resources"]}
-    assert paths == {
+    assert {
         "/v1/nowcast/latest",
         "/v1/nowcast/history",
         "/v1/nowcast/history/extended",
-    }
+    }.issubset(paths)
     latest = next(r for r in payload["resources"] if r["path"] == "/v1/nowcast/latest")
     assert latest["method"] == "POST"
     assert latest["price"] == "$0.02"

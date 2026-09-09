@@ -7,6 +7,7 @@ from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse
 
 from pjm_nowcast.api.discovery import (
     agent_card,
+    capabilities_payload,
     health_payload,
     llms_txt,
     load_demo_sample,
@@ -30,11 +31,13 @@ _ICON_TYPES = {
 
 
 @router.get("/health", summary="Health", tags=["free"])
+@router.head("/health", include_in_schema=False)
 def health(request: Request) -> dict:
     return health_payload(request.app.state.settings, request.app.state.store)
 
 
 @router.get("/", summary="Service card", tags=["free"])
+@router.head("/", include_in_schema=False)
 def root(request: Request) -> dict:
     return service_card(request.app.state.settings)
 
@@ -86,7 +89,9 @@ def robots():
 
 
 @router.get("/.well-known/x402", summary="x402 well-known", tags=["free"])
+@router.head("/.well-known/x402", include_in_schema=False)
 @router.get("/.well-known/x402.json", include_in_schema=False)
+@router.head("/.well-known/x402.json", include_in_schema=False)
 def well_known(request: Request):
     return JSONResponse(well_known_x402(request.app.state.settings))
 
@@ -99,6 +104,11 @@ def well_known_agent(request: Request):
 @router.get("/.well-known/x402-resources", summary="x402 paid resources", tags=["free"])
 def well_known_resources(request: Request):
     return JSONResponse(x402_resources(request.app.state.settings))
+
+
+@router.get("/v1/capabilities", summary="Fetch nowcast capabilities matrix", tags=["free"])
+def capabilities(request: Request):
+    return JSONResponse(capabilities_payload(request.app.state.settings))
 
 
 @router.get(

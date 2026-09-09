@@ -14,6 +14,9 @@ EXPECTED_TOOLS = {
     "nowcast_latest",
     "nowcast_history",
     "nowcast_history_extended",
+    "nowcast_regime",
+    "nowcast_spreads",
+    "nowcast_asof",
 }
 
 
@@ -37,8 +40,10 @@ def test_mcp_service_info_free(client):
         assert x402["price"].startswith("$")
         assert "solana" in x402["networks"]
         assert x402["httpPath"].startswith("/v1/nowcast/")
-        assert "families" in tool["inputSchema"]["properties"]
-        assert "required" not in tool["inputSchema"] or tool["inputSchema"]["required"] == []
+        props = tool["inputSchema"].get("properties") or {}
+        if name in {"nowcast_latest", "nowcast_history", "nowcast_history_extended"}:
+            assert "families" in props
+        assert "required" not in tool["inputSchema"] or tool["inputSchema"]["required"] == [] or name == "nowcast_asof"
 
 
 def test_mcp_get_discover(client):

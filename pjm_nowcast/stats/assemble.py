@@ -316,3 +316,92 @@ def assemble_history(
             attach(prior_body, prior)
         body["priorPeriod"] = prior_body
     return body
+
+
+def assemble_regime(
+    store: Store,
+    settings: Settings,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    last = store.latest()
+    if last is None:
+        return None
+    body = envelope(last, 1, settings, now=now)
+    path = getattr(settings, "snapshot_path", None)
+    data: dict[str, Any] = {}
+    try:
+        raw = Path(path).read_text(encoding="utf-8") if path else ""
+        parsed = json.loads(raw) if raw else {}
+        if isinstance(parsed, dict):
+            data = parsed
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        data = {}
+    posts = data.get("state_posteriors")
+    post_list: list[float] | None = None
+    k_star: int | None = None
+    if isinstance(posts, list) and posts:
+        try:
+            vals = [float(p) for p in posts]
+        except (TypeError, ValueError):
+            vals = []
+        if vals and all(math.isfinite(p) for p in vals):
+            post_list = vals
+            k_star = int(max(range(len(vals)), key=lambda i: vals[i]))
+    if k_star is None:
+        notes = str(data.get("notes") or "")
+        if notes.startswith("k*="):
+            try:
+                k_star = int(notes.split("=", 1)[1].strip())
+            except (TypeError, ValueError):
+                k_star = None
+    ent = data.get("last_entropy")
+    try:
+        ent_f = float(ent) if ent is not None else None
+        if ent_f is not None and not math.isfinite(ent_f):
+            ent_f = None
+    except (TypeError, ValueError):
+        ent_f = None
+    body["entropy"] = ent_f
+    body["posteriors"] = post_list
+    body["kStar"] = k_star
+    return body
+
+
+def assemble_spreads(
+    store: Store,
+    settings: Settings,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    last = store.latest()
+    if last is None:
+        return None
+    body = envelope(last, 1, settings, now=now)
+    block = _spread_block([last], last, settings.min_zones_for_spread)
+    body["zones"] = block.get("zones")
+    body["lastSpread"] = block.get("lastSpread")
+    body["lastP05"] = block.get("lastP05")
+    body["lastP95"] = block.get("lastP95")
+    body["unit"] = block.get("unit")
+    return body
+
+
+def assemble_asof(
+    store: Store,
+    settings: Settings,
+    as_of: datetime,
+    now: datetime | None = None,
+) -> dict[str, Any] | None:
+    pinned = store.at_or_before(as_of)
+    if pinned is None:
+        return None
+    start = as_of - timedelta(hours=settings.default_l1_window_hours)
+    window = [o for o in store.observations_since(start) if o.ts <= as_of]
+    if not window:
+        window = [pinned]
+    body = envelope(pinned, len(window), settings, now=now)
+    body["pinnedAsOf"] = as_of.isoformat()
+    if "rto_lmp" in ALL_FAMILIES:
+        body["rtoLmp"] = _lmp_block(window)
+    body["zonalSpread"] = _spread_block(window, pinned, settings.min_zones_for_spread)
+    body["rtoLoad"] = _load_block(window, pinned)
+    return body

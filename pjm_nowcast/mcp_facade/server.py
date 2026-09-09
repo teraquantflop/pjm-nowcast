@@ -9,12 +9,25 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from pjm_nowcast import DISCLAIMER, __version__
-from pjm_nowcast.api.discovery import health_payload, load_demo_sample, mcp_mount, service_card
+from pjm_nowcast.api.discovery import (
+    MCP_ACCEPT,
+    MCP_CURL,
+    health_payload,
+    load_demo_sample,
+    mcp_mount,
+    service_card,
+)
+from pjm_nowcast.stats.assemble import (
+    assemble_asof,
+    assemble_history,
+    assemble_latest,
+    assemble_regime,
+    assemble_spreads,
+)
 from pjm_nowcast.payments.optionbook import HEADER as OPTIONBOOK_HEADER
 from pjm_nowcast.payments.optionbook import header_matches
 from pjm_nowcast.payments.routes import price_for, public_network_names
 from pjm_nowcast.settings import Settings
-from pjm_nowcast.stats.assemble import assemble_history, assemble_latest
 
 router = APIRouter(include_in_schema=False)
 
@@ -27,8 +40,9 @@ _FAMILIES = {
 _PAYLOAD_BLURB = (
     "Returns descriptive last/min/max/mean/std/p05/p50/p95 for RTO LMP (USD/MWh), "
     "zonal LMP spread (USD/MWh, plus zone map), and/or RTO load (MW), with "
-    "asOf, polledAt, ageSeconds, stale. Trailing mean/std is a descriptive mix of "
-    "the stored sample, not a live forecast F. Not a forecast. "
+    "asOf, polledAt, ageSeconds, stale. Gate on stale/ageSeconds. "
+    "Trailing mean/std is a descriptive mix of the stored sample, not a live forecast F. "
+    "Not a forecast. "
 )
 
 _PAID_OUTPUT_SCHEMA = {
@@ -125,8 +139,8 @@ def tool_catalog(settings: Settings) -> list[dict[str, Any]]:
                 "/v1/nowcast/latest",
                 "POST /v1/nowcast/latest. Latest stored snapshot plus trailing 24h stats. "
                 "Also top-level last price_vol ($/MWh rolling realized LMP std from "
-                "the last 8 SQLite prints, RMS of successive diffs, not Black vol) "
-                "and price_vol_missing. ",
+                "the last 8 SQLite prints, RMS of successive diffs, not Black vol), "
+                "price_vol_missing, mix_std_price, mix_n_obs. Gate on stale/ageSeconds. ",
             ),
             "inputSchema": {
                 "type": "object",
@@ -190,6 +204,52 @@ def tool_catalog(settings: Settings) -> list[dict[str, Any]]:
             "paid": True,
             "http_path": "/v1/nowcast/history/extended",
         },
+        {
+            "name": "nowcast_regime",
+            "description": _paid_description(
+                settings,
+                "/v1/nowcast/regime",
+                "POST /v1/nowcast/regime. Latent-state snapshot (entropy, posteriors, kStar) "
+                "plus asOf and ageSeconds. Gate on stale/ageSeconds. ",
+            ),
+            "inputSchema": {"type": "object", "properties": {}},
+            "outputSchema": _PAID_OUTPUT_SCHEMA,
+            "annotations": {"readOnlyHint": True},
+            "paid": True,
+            "http_path": "/v1/nowcast/regime",
+        },
+        {
+            "name": "nowcast_spreads",
+            "description": _paid_description(
+                settings,
+                "/v1/nowcast/spreads",
+                "POST /v1/nowcast/spreads. Zone-level spread table for the latest print. "
+                "Gate on stale/ageSeconds. ",
+            ),
+            "inputSchema": {"type": "object", "properties": {}},
+            "outputSchema": _PAID_OUTPUT_SCHEMA,
+            "annotations": {"readOnlyHint": True},
+            "paid": True,
+            "http_path": "/v1/nowcast/spreads",
+        },
+        {
+            "name": "nowcast_asof",
+            "description": _paid_description(
+                settings,
+                "/v1/nowcast/asof",
+                "POST /v1/nowcast/asof. Descriptive snapshot pinned to asOf. "
+                "asOf is required. Fail closed if missing. Gate on stale/ageSeconds. ",
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {"asOf": {"type": "string", "description": "ISO-8601"}},
+                "required": ["asOf"],
+            },
+            "outputSchema": _PAID_OUTPUT_SCHEMA,
+            "annotations": {"readOnlyHint": True},
+            "paid": True,
+            "http_path": "/v1/nowcast/asof",
+        },
     ]
 
 
@@ -229,10 +289,39 @@ def _text_result(payload: Any, is_error: bool = False) -> dict[str, Any]:
     }
 
 
+def _accepts_mcp(request: Request) -> bool:
+    raw = (request.headers.get("accept") or "").strip()
+    if not raw:
+        return True
+    lower = raw.lower()
+    return (
+        "*/*" in lower
+        or "application/json" in lower
+        or "text/event-stream" in lower
+    )
+
+
+def _mcp_406(settings: Settings) -> JSONResponse:
+    base = settings.public_base_url.rstrip("/")
+    return JSONResponse(
+        status_code=406,
+        content={
+            "error": "not_acceptable",
+            "message": (
+                f"Send Accept: {MCP_ACCEPT}. "
+                + MCP_CURL.replace("$PUBLIC_BASE_URL", base)
+            ),
+            "accept": MCP_ACCEPT,
+        },
+    )
+
+
 @router.get("")
 @router.get("/")
-def mcp_discover(request: Request) -> dict[str, Any]:
+def mcp_discover(request: Request):
     settings: Settings = request.app.state.settings
+    if not _accepts_mcp(request):
+        return _mcp_406(settings)
     mount = mcp_mount(settings) or {
         "enabled": False,
         "path": settings.mcp_path,
@@ -247,10 +336,14 @@ def mcp_discover(request: Request) -> dict[str, Any]:
         "protocolVersion": "2024-11-05",
         "url": mount["url"],
         "methods": ["initialize", "ping", "tools/list", "tools/call"],
+        "accept": MCP_ACCEPT,
         "note": (
             "POST JSON-RPC to this URL. tools/list is free and needs no key. "
-            "Paid nowcast tools return paymentStatus=required without x402 payment."
+            f"Send Accept: {MCP_ACCEPT}. "
+            "Paid nowcast tools return paymentStatus=required without x402 payment. "
+            "Gate paid results on stale/ageSeconds."
         ),
+        "curl": MCP_CURL.replace("$PUBLIC_BASE_URL", settings.public_base_url.rstrip("/")),
     }
 
 
@@ -258,6 +351,8 @@ def mcp_discover(request: Request) -> dict[str, Any]:
 @router.post("/")
 async def mcp_endpoint(request: Request) -> JSONResponse:
     settings: Settings = request.app.state.settings
+    if not _accepts_mcp(request):
+        return _mcp_406(settings)
     try:
         msg = await request.json()
     except Exception:
@@ -381,5 +476,34 @@ def _call_tool(request: Request, settings: Settings, params: dict[str, Any]) -> 
         )
         if body is None:
             return _text_result({"error": "data_unavailable"}, is_error=True)
+        return _text_result(_with_status(body, "paid"))
+    if name == "nowcast_regime":
+        body = assemble_regime(store, settings)
+        if body is None:
+            return _text_result({"error": "data_unavailable"}, is_error=True)
+        return _text_result(_with_status(body, "paid"))
+    if name == "nowcast_spreads":
+        body = assemble_spreads(store, settings)
+        if body is None:
+            return _text_result({"error": "data_unavailable"}, is_error=True)
+        return _text_result(_with_status(body, "paid"))
+    if name == "nowcast_asof":
+        from pjm_nowcast.api.routes_nowcast import _parse_asof
+
+        raw_asof = args.get("asOf")
+        if not raw_asof:
+            return _text_result(
+                {"error": "invalid_request", "message": "asOf is required"},
+                is_error=True,
+            )
+        pinned = _parse_asof(str(raw_asof).strip())
+        if pinned is None:
+            return _text_result(
+                {"error": "invalid_request", "message": "asOf must be ISO-8601"},
+                is_error=True,
+            )
+        body = assemble_asof(store, settings, pinned)
+        if body is None:
+            return _text_result({"error": "asof_not_found"}, is_error=True)
         return _text_result(_with_status(body, "paid"))
     return _text_result({"error": "unknown_tool"}, is_error=True)
