@@ -20,6 +20,7 @@ from pjm_nowcast.api.schemas import (
     ExtendedHistoryRequest,
     HistoryRequest,
     LatestRequest,
+    SnapshotsRequest,
 )
 from pjm_nowcast.payments.routes import PAID_ROUTES, price_for, public_network_names
 from pjm_nowcast.settings import Settings
@@ -47,6 +48,7 @@ PAID_SUMMARIES = {
     "/v1/nowcast/regime": "Latent-state snapshot with asOf and ageSeconds",
     "/v1/nowcast/spreads": "Zone-level spread table for the latest print",
     "/v1/nowcast/asof": "Descriptive snapshot pinned to a historical asOf",
+    "/v1/nowcast/snapshots": "Append-only /latest snapshots by EPT hour",
 }
 
 PAID_DESCRIPTIONS = {
@@ -76,6 +78,11 @@ PAID_DESCRIPTIONS = {
         "Descriptive snapshot for the last print at or before asOf. Fail closed "
         "if asOf is missing or no row exists. Not a forecast."
     ),
+    "/v1/nowcast/snapshots": (
+        "Append-only archive of what /latest reported for each EPT hour-beginning. "
+        "First write wins. Not a forward forecast. Hours before this store have no row. "
+        "Query window capped at maxHistoryDays (default 90)."
+    ),
 }
 
 _REQUEST_MODELS = {
@@ -85,6 +92,7 @@ _REQUEST_MODELS = {
     "/v1/nowcast/regime": EmptyNowcastRequest,
     "/v1/nowcast/spreads": EmptyNowcastRequest,
     "/v1/nowcast/asof": AsofRequest,
+    "/v1/nowcast/snapshots": SnapshotsRequest,
 }
 
 
@@ -243,6 +251,7 @@ def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, A
         ("ExtendedHistoryRequest", ExtendedHistoryRequest),
         ("EmptyNowcastRequest", EmptyNowcastRequest),
         ("AsofRequest", AsofRequest),
+        ("SnapshotsRequest", SnapshotsRequest),
     ):
         comps["schemas"][name] = model.model_json_schema(
             ref_template="#/components/schemas/{model}"

@@ -10,10 +10,11 @@ HTTP and MCP request handlers only read a local SQLite store. A background polle
 
 | Tier | Route | What it returns |
 |------|--------|-----------------|
-| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /openapi.json`, `GET /swagger.json`, `GET /skill.md`, `GET /llms.txt`, `GET /llm.txt`, `GET /.well-known/x402`, `GET /favicon.ico` | Health, service card, unpaid synthetic schema fixture, OpenAPI aliases, agent discovery, favicon |
+| L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /v1/capabilities`, `GET /openapi.json`, `GET /swagger.json`, `GET /skill.md`, `GET /llms.txt`, `GET /llm.txt`, `GET /.well-known/x402`, `GET /favicon.ico` | Health, service card, unpaid synthetic schema fixture, capabilities, OpenAPI aliases, agent discovery, favicon |
 | L1 | `POST /v1/nowcast/latest` | Latest snapshot + trailing 24h stats |
-| L2 | `POST /v1/nowcast/history` | 1–72h history (native poll points) |
-| L3 | `POST /v1/nowcast/history/extended` | Up to 30-day history, hourly buckets, prior-period comparison |
+| L2 | `POST /v1/nowcast/history` | 1–72h actuals history (native poll points) |
+| L2 | `POST /v1/nowcast/snapshots` | Append-only `/latest` snapshots by EPT hour-beginning (90-day cap, first write wins, no backfill) |
+| L3 | `POST /v1/nowcast/history/extended` | Up to 90-day actuals history, hourly buckets, prior-period comparison |
 
 Every nowcast payload includes `asOf`, `polledAt`, `ageSeconds`, `maxAgeSeconds`, and `stale`. Units are `USD/MWh` (prices/spreads) and `MW` (load).
 
@@ -88,7 +89,7 @@ curl -sS "$PUBLIC_BASE_URL/mcp" -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Free tools: `health`, `service_info`, `demo_sample` (GET `/v1/demo/sample` unpaid synthetic fixture, not live PJM). Paid: `nowcast_latest` ($0.02), `nowcast_history` ($0.10), `nowcast_history_extended` ($0.25) — x402 exact USDC on Solana, Base, and Polygon. Unpaid paid-tool calls stay JSON-RPC 200 with `paymentStatus: "required"` and a `paymentRequired` challenge (same terms as HTTP 402). HTTP `POST /v1/nowcast/*` without payment is still 402.
+Free tools: `health`, `service_info`, `demo_sample` (GET `/v1/demo/sample` unpaid synthetic fixture, not live PJM). Paid: `nowcast_latest` ($0.02), `nowcast_history` ($0.10), `nowcast_snapshots` ($0.10), `nowcast_history_extended` ($0.25) — x402 USDC exact on configured networks. Unpaid paid-tool calls stay JSON-RPC 200 with `paymentStatus: "required"`. HTTP `POST /v1/nowcast/*` without payment is still 402.
 
 ## Railway
 
@@ -96,7 +97,7 @@ One service is the default:
 
 - Dockerfile in this repo, or Nixpacks + `pip install -r requirements.txt`
 - Start: `uvicorn pjm_nowcast.main:app --host 0.0.0.0 --port $PORT`
-- Persistent volume mounted at `/data`, and `DATA_DIR=/data` (SQLite is `$DATA_DIR/pjm-nowcast.sqlite`, 30-day rolling retention). If logs show `db=var/pjm-nowcast.sqlite` or `n_store=0` on boot, the DB is on the ephemeral image, not the volume. Production remaps a relative `./var` to `/data`.
+- Persistent volume mounted at `/data`, and `DATA_DIR=/data` (SQLite is `$DATA_DIR/pjm-nowcast.sqlite`, 90-day rolling retention). If logs show `db=var/pjm-nowcast.sqlite` or `n_store=0` on boot, the DB is on the ephemeral image, not the volume. Production remaps a relative `./var` to `/data`.
 - `TRUST_PROXY=true`, `ENV=production`, `PUBLIC_BASE_URL=https://pjm-nowcast-production.up.railway.app`
 - `RUN_POLLER=true`
 - Set public `PAY_TO_SVM_ADDRESS`, `PAY_TO_EVM_ADDRESS` (Base), and `POLY_PAY_TO` (Polygon)

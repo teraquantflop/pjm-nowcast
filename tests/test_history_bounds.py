@@ -17,9 +17,10 @@ def test_l2_accepts_72h(client, store):
 
 def test_l3_rejects_above_max(client, store):
     seed_observation(store)
+    max_hours = client.app.state.settings.l3_max_hours
     r = client.post(
         "/v1/nowcast/history/extended",
-        json={"windowHours": 30 * 24 + 1},
+        json={"windowHours": max_hours + 1},
     )
     assert r.status_code == 400
 

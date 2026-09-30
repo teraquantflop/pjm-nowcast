@@ -176,6 +176,19 @@ def poll_once(
             row = normalize(raw, prev_load)
             oid = store.insert_observation(**row)
             store.prune(settings.retention_days)
+            try:
+                from pjm_nowcast.stats.assemble import assemble_latest, snapshot_record_from_latest
+
+                latest_body = assemble_latest(store, settings)
+                rec = (
+                    snapshot_record_from_latest(latest_body, datetime.now(timezone.utc))
+                    if latest_body
+                    else None
+                )
+                if rec is not None:
+                    store.insert_nowcast_snapshot(rec)
+            except Exception:
+                log.exception("nowcast snapshot write failed; scrape row was still written")
             if snap is not None:
                 try:
                     _hmm_tick(

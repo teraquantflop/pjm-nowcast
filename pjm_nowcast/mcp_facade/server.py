@@ -23,6 +23,7 @@ from pjm_nowcast.stats.assemble import (
     assemble_latest,
     assemble_regime,
     assemble_spreads,
+    assemble_snapshots,
 )
 from pjm_nowcast.payments.optionbook import HEADER as OPTIONBOOK_HEADER
 from pjm_nowcast.payments.optionbook import header_matches
@@ -249,6 +250,27 @@ def tool_catalog(settings: Settings) -> list[dict[str, Any]]:
             "annotations": {"readOnlyHint": True},
             "paid": True,
             "http_path": "/v1/nowcast/asof",
+        },
+        {
+            "name": "nowcast_snapshots",
+            "description": _paid_description(
+                settings,
+                "/v1/nowcast/snapshots",
+                "POST /v1/nowcast/snapshots. Append-only archive of what /latest reported "
+                "for each EPT hour-beginning (90-day cap, first write wins, no backfill). "
+                "Not a forward forecast. Hours without a row have no stored nowcast. ",
+            ),
+            "inputSchema": {
+                "type": "object",
+                "properties": {
+                    "from": {"type": "string", "description": "ISO-8601 start inclusive"},
+                    "to": {"type": "string", "description": "ISO-8601 end exclusive"},
+                },
+            },
+            "outputSchema": _PAID_OUTPUT_SCHEMA,
+            "annotations": {"readOnlyHint": True},
+            "paid": True,
+            "http_path": "/v1/nowcast/snapshots",
         },
     ]
 
@@ -505,5 +527,12 @@ def _call_tool(request: Request, settings: Settings, params: dict[str, Any]) -> 
         body = assemble_asof(store, settings, pinned)
         if body is None:
             return _text_result({"error": "asof_not_found"}, is_error=True)
+        return _text_result(_with_status(body, "paid"))
+    if name == "nowcast_snapshots":
+        from pjm_nowcast.api.routes_nowcast import _parse_asof as parse_asof
+
+        start = parse_asof(str(args["from"]).strip()) if args.get("from") else None
+        end = parse_asof(str(args["to"]).strip()) if args.get("to") else None
+        body = assemble_snapshots(store, settings, start=start, end=end)
         return _text_result(_with_status(body, "paid"))
     return _text_result({"error": "unknown_tool"}, is_error=True)

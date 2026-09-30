@@ -69,8 +69,8 @@ class Settings(BaseSettings):
     mock_mode: bool = False
     poll_carry_forward: bool = False
 
-    retention_days: int = 30
-    max_history_days: int = 30
+    retention_days: int = 90
+    max_history_days: int = 90
     stale_after_seconds: int = 10800
     zonal_zones: str = "BGE,COMED,DOM,PEPCO,PSEG,JCPL"
     min_zones_for_spread: int = 4

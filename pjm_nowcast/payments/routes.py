@@ -13,6 +13,7 @@ PAID_ROUTES: dict[str, str] = {
     "/v1/nowcast/regime": "l1",
     "/v1/nowcast/spreads": "l1",
     "/v1/nowcast/asof": "l1",
+    "/v1/nowcast/snapshots": "l2",
 }
 
 FREE_TIER_ELIGIBLE = {"/v1/nowcast/latest"}
@@ -35,6 +36,10 @@ PAID_DESCRIPTIONS: dict[str, str] = {
     ),
     "/v1/nowcast/asof": (
         "Descriptive snapshot pinned to a historical asOf. Fail closed if missing."
+    ),
+    "/v1/nowcast/snapshots": (
+        "Append-only archive of /latest snapshots by EPT hour-beginning. "
+        "Not a forward forecast. Pre-store hours have no row."
     ),
 }
 

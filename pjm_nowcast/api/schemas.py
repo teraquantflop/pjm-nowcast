@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from pjm_nowcast import DISCLAIMER
 
@@ -59,6 +59,21 @@ class AsofRequest(BaseModel):
     asOf: str = Field(
         description="ISO-8601 observation clock. Required. No interpolation.",
     )
+
+
+class SnapshotsRequest(BaseModel):
+    fromTime: str | None = Field(
+        default=None,
+        description="ISO-8601 start (inclusive). Capped at 90-day lookback.",
+        alias="from",
+    )
+    toTime: str | None = Field(
+        default=None,
+        description="ISO-8601 end (exclusive).",
+        alias="to",
+    )
+
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ErrorBody(BaseModel):

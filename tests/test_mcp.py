@@ -17,6 +17,7 @@ EXPECTED_TOOLS = {
     "nowcast_regime",
     "nowcast_spreads",
     "nowcast_asof",
+    "nowcast_snapshots",
 }
 
 

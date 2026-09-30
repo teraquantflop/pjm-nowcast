@@ -60,3 +60,20 @@ CREATE TABLE IF NOT EXISTS free_tier (
   count INTEGER NOT NULL,
   PRIMARY KEY (bucket, window_start)
 );
+
+CREATE TABLE IF NOT EXISTS nowcast_snapshots (
+  id INTEGER PRIMARY KEY,
+  fetched_at_utc TEXT NOT NULL,
+  asof TEXT NOT NULL,
+  target_hour_ept TEXT NOT NULL UNIQUE,
+  rto_nc REAL,
+  zone_nc TEXT,
+  spr_nc REAL,
+  load_nc REAL,
+  price_vol REAL,
+  price_vol_missing INTEGER,
+  mix_std_price REAL,
+  mix_n_obs INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_snap_asof ON nowcast_snapshots(asof);
+CREATE INDEX IF NOT EXISTS idx_snap_hour ON nowcast_snapshots(target_hour_ept);

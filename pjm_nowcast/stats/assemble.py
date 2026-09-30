@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Iterable, Literal
 
 from pjm_nowcast import DISCLAIMER
-from pjm_nowcast.db.store import Observation, Store
+from pjm_nowcast.db.store import Observation, Store, target_hour_ept
 from pjm_nowcast.settings import Settings
 from pjm_nowcast.stats.descriptive import spread_of, summarize
 from pjm_nowcast.stats.price_vol import PRICE_VOL_WINDOW, price_vol_from_lmps
@@ -405,3 +405,62 @@ def assemble_asof(
     body["zonalSpread"] = _spread_block(window, pinned, settings.min_zones_for_spread)
     body["rtoLoad"] = _load_block(window, pinned)
     return body
+
+
+def snapshot_record_from_latest(body: dict[str, Any], fetched_at: datetime) -> dict[str, Any] | None:
+    asof_s = body.get("asOf")
+    if not asof_s:
+        return None
+    try:
+        asof = datetime.fromisoformat(str(asof_s).replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if asof.tzinfo is None:
+        asof = asof.replace(tzinfo=timezone.utc)
+    zs = body.get("zonalSpread") or {}
+    zones = zs.get("zones") if isinstance(zs, dict) else None
+    zone_json = json.dumps(zones) if isinstance(zones, dict) and zones else None
+    spr = zs.get("lastSpread") if isinstance(zs, dict) else None
+    rto = (body.get("rtoLmp") or {}).get("last") if isinstance(body.get("rtoLmp"), dict) else None
+    load = (body.get("rtoLoad") or {}).get("last") if isinstance(body.get("rtoLoad"), dict) else None
+    return {
+        "fetched_at_utc": fetched_at.astimezone(timezone.utc).isoformat(),
+        "asof": asof.isoformat(),
+        "target_hour_ept": target_hour_ept(asof),
+        "rto_nc": rto,
+        "zone_nc": zone_json,
+        "spr_nc": spr,
+        "load_nc": load,
+        "price_vol": body.get("price_vol"),
+        "price_vol_missing": body.get("price_vol_missing"),
+        "mix_std_price": body.get("mix_std_price"),
+        "mix_n_obs": body.get("mix_n_obs"),
+    }
+
+
+def assemble_snapshots(
+    store: Store,
+    settings: Settings,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    now: datetime | None = None,
+) -> dict[str, Any]:
+    now = now or _now()
+    cap_start = now - timedelta(days=settings.max_history_days)
+    if start is None or start < cap_start:
+        start = cap_start
+    rows = store.list_nowcast_snapshots(start=start, end=end)
+    return {
+        "product": "pjm-nowcast",
+        "disclaimer": (
+            DISCLAIMER
+            + " Append-only snapshots of what /latest reported for that EPT hour-beginning. "
+            "Not a forward forecast of a future hour. Hours without a row have no stored nowcast (null, not zero). "
+            "Residuals are only defined where a snapshot exists."
+        ),
+        "windowDays": settings.max_history_days,
+        "from": start.isoformat(),
+        "to": None if end is None else end.isoformat(),
+        "count": len(rows),
+        "snapshots": rows,
+    }

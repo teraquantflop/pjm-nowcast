@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 import sqlite3
@@ -10,12 +11,19 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from pjm_nowcast.settings import DB_FILENAME
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 log = logging.getLogger("pjm_nowcast.db")
+ET = ZoneInfo("America/New_York")
+
+
+def target_hour_ept(asof: datetime) -> str:
+    local = asof.astimezone(ET) if asof.tzinfo else asof.replace(tzinfo=timezone.utc).astimezone(ET)
+    return local.replace(minute=0, second=0, microsecond=0).isoformat()
 
 
 def _iso(dt: datetime) -> str:
@@ -229,7 +237,79 @@ class Store:
                 "DELETE FROM free_tier WHERE window_start < ?",
                 (_iso(ft_cut),),
             )
+            self._conn.execute(
+                "DELETE FROM nowcast_snapshots WHERE asof < ?",
+                (_iso(cutoff),),
+            )
             return deleted
+
+    def insert_nowcast_snapshot(self, row: dict[str, Any]) -> bool:
+        """Append-only. First write for target_hour_ept wins. Never UPDATE."""
+        with self._lock:
+            cur = self._conn.execute(
+                """
+                INSERT OR IGNORE INTO nowcast_snapshots (
+                  fetched_at_utc, asof, target_hour_ept,
+                  rto_nc, zone_nc, spr_nc, load_nc,
+                  price_vol, price_vol_missing, mix_std_price, mix_n_obs
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    row["fetched_at_utc"],
+                    row["asof"],
+                    row["target_hour_ept"],
+                    row.get("rto_nc"),
+                    row.get("zone_nc"),
+                    row.get("spr_nc"),
+                    row.get("load_nc"),
+                    row.get("price_vol"),
+                    None if row.get("price_vol_missing") is None else int(bool(row["price_vol_missing"])),
+                    row.get("mix_std_price"),
+                    row.get("mix_n_obs"),
+                ),
+            )
+            return int(cur.rowcount or 0) > 0
+
+    def list_nowcast_snapshots(
+        self,
+        start: datetime | None = None,
+        end: datetime | None = None,
+    ) -> list[dict[str, Any]]:
+        sql = "SELECT * FROM nowcast_snapshots WHERE 1=1"
+        params: list[Any] = []
+        if start is not None:
+            sql += " AND asof >= ?"
+            params.append(_iso(start))
+        if end is not None:
+            sql += " AND asof < ?"
+            params.append(_iso(end))
+        sql += " ORDER BY asof ASC, id ASC"
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+            out = []
+            for r in rows:
+                zones = r["zone_nc"]
+                try:
+                    zone_map = json.loads(zones) if zones else None
+                except (TypeError, ValueError, json.JSONDecodeError):
+                    zone_map = None
+                missing = r["price_vol_missing"]
+                out.append(
+                    {
+                        "fetched_at_utc": r["fetched_at_utc"],
+                        "asof": r["asof"],
+                        "target_hour_ept": r["target_hour_ept"],
+                        "rto_nc": r["rto_nc"],
+                        "zone_nc": zone_map,
+                        "spr_nc": r["spr_nc"],
+                        "load_nc": r["load_nc"],
+                        "price_vol": r["price_vol"],
+                        "price_vol_missing": None if missing is None else bool(missing),
+                        "mix_std_price": r["mix_std_price"],
+                        "mix_n_obs": r["mix_n_obs"],
+                    }
+                )
+            return out
 
     def start_poll_run(self, started_at: datetime) -> int:
         with self._lock:

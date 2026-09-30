@@ -168,6 +168,7 @@ def capabilities_payload(settings: Settings) -> dict[str, Any]:
             "latestHours": settings.default_l1_window_hours,
             "historyHoursMax": settings.l2_max_hours,
             "extendedHoursMax": settings.l3_max_hours,
+            "snapshotDays": settings.max_history_days,
         },
         "zones": list(settings.zone_list),
         "fields": [
@@ -196,6 +197,7 @@ def capabilities_payload(settings: Settings) -> dict[str, Any]:
             "POST /v1/nowcast/regime": settings.price_l1,
             "POST /v1/nowcast/spreads": settings.price_l1,
             "POST /v1/nowcast/asof": settings.price_l1,
+            "POST /v1/nowcast/snapshots": settings.price_l2,
         },
         "maxSizes": {
             "historyHours": settings.l2_max_hours,
@@ -461,6 +463,17 @@ def service_card(settings: Settings) -> dict:
                 ),
                 "exampleRequest": {"asOf": "2026-08-01T16:00:00-04:00"},
             },
+            {
+                "tier": "L2",
+                "method": "POST",
+                "path": "/v1/nowcast/snapshots",
+                "price": settings.price_l2,
+                "description": (
+                    "Append-only /latest snapshots by EPT hour-beginning (90-day cap). "
+                    "First write wins. Not a forward forecast. Pre-store hours have no row."
+                ),
+                "exampleRequest": {"from": "2026-08-01T00:00:00Z", "to": "2026-08-08T00:00:00Z"},
+            },
         ],
     }
     card["endpoints"] = [e for e in card["endpoints"] if e]
@@ -539,7 +552,7 @@ def llms_txt(settings: Settings) -> str:
                 f"- Accept: {MCP_ACCEPT}",
                 f"- Example: {MCP_CURL.replace('$PUBLIC_BASE_URL', base)}",
                 "- Free tools: health, service_info, demo_sample (GET /v1/demo/sample unpaid synthetic fixture, not live PJM)",
-                "- Paid tools: nowcast_latest, nowcast_history, nowcast_history_extended, nowcast_regime, nowcast_spreads, nowcast_asof (x402 USDC exact; unpaid → paymentStatus=required). Gate on stale/ageSeconds.",
+                "- Paid tools: nowcast_latest, nowcast_history, nowcast_history_extended, nowcast_regime, nowcast_spreads, nowcast_asof, nowcast_snapshots (x402 USDC exact; unpaid → paymentStatus=required). Gate on stale/ageSeconds.",
             ]
         )
     else:
@@ -563,6 +576,7 @@ def llms_txt(settings: Settings) -> str:
             f"- POST /v1/nowcast/regime — {settings.price_l1} — MCP nowcast_regime",
             f"- POST /v1/nowcast/spreads — {settings.price_l1} — MCP nowcast_spreads",
             f"- POST /v1/nowcast/asof — {settings.price_l1} — MCP nowcast_asof",
+            f"- POST /v1/nowcast/snapshots — {settings.price_l2} — MCP nowcast_snapshots (append-only EPT-hour archive, 90-day cap, no backfill)",
             "",
             "## Notes",
             AGENT_NOTES,
@@ -653,6 +667,14 @@ def well_known_x402(settings: Settings) -> dict:
                 "description": "Descriptive snapshot pinned to asOf.",
             },
             {
+                "url": f"{base}/v1/nowcast/snapshots",
+                "method": "POST",
+                "price": settings.price_l2,
+                "mcpTool": "nowcast_snapshots",
+                "tags": ["asof", "mark"],
+                "description": "Append-only /latest snapshots by EPT hour. Not a forward forecast.",
+            },
+            {
                 "url": f"{base}/v1/nowcast/history",
                 "method": "POST",
                 "price": settings.price_l2,
@@ -733,6 +755,13 @@ def agent_card(settings: Settings) -> dict[str, Any]:
             "method": "POST",
             "path": "/v1/nowcast/asof",
             "price": settings.price_l1,
+            "paid": True,
+        },
+        {
+            "name": "nowcast_snapshots",
+            "method": "POST",
+            "path": "/v1/nowcast/snapshots",
+            "price": settings.price_l2,
             "paid": True,
         },
     ]

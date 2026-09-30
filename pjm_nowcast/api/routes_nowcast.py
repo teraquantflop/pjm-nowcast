@@ -10,6 +10,7 @@ from pjm_nowcast.api.schemas import (
     ExtendedHistoryRequest,
     HistoryRequest,
     LatestRequest,
+    SnapshotsRequest,
     parse_json_body,
 )
 from pjm_nowcast.settings import Settings
@@ -19,6 +20,7 @@ from pjm_nowcast.stats.assemble import (
     assemble_latest,
     assemble_regime,
     assemble_spreads,
+    assemble_snapshots,
 )
 
 router = APIRouter()
@@ -152,3 +154,21 @@ async def asof(request: Request):
             "No observation at or before asOf.",
         )
     return body
+
+
+@router.post("/v1/nowcast/snapshots", summary="Hourly nowcast snapshot archive", tags=["nowcast"])
+async def snapshots(request: Request):
+    settings: Settings = request.app.state.settings
+    raw = await request.body()
+    try:
+        payload = parse_json_body(raw, SnapshotsRequest)
+    except Exception as exc:
+        return error_response(400, "invalid_request", str(exc))
+    assert isinstance(payload, SnapshotsRequest)
+    start = _parse_asof(payload.fromTime.strip()) if payload.fromTime else None
+    end = _parse_asof(payload.toTime.strip()) if payload.toTime else None
+    if payload.fromTime and start is None:
+        return error_response(400, "invalid_request", "from must be ISO-8601.")
+    if payload.toTime and end is None:
+        return error_response(400, "invalid_request", "to must be ISO-8601.")
+    return assemble_snapshots(request.app.state.store, settings, start=start, end=end)
