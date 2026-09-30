@@ -13,7 +13,7 @@ HTTP and MCP request handlers only read a local SQLite store. A background polle
 | L0 free | `GET /health`, `GET /`, `GET /v1/demo/sample`, `GET /v1/capabilities`, `GET /openapi.json`, `GET /swagger.json`, `GET /skill.md`, `GET /llms.txt`, `GET /llm.txt`, `GET /.well-known/x402`, `GET /favicon.ico` | Health, service card, unpaid synthetic schema fixture, capabilities, OpenAPI aliases, agent discovery, favicon |
 | L1 | `POST /v1/nowcast/latest` | Latest snapshot + trailing 24h stats |
 | L2 | `POST /v1/nowcast/history` | 1–72h actuals history (native poll points) |
-| L2 | `POST /v1/nowcast/snapshots` | Append-only `/latest` snapshots by EPT hour-beginning (90-day cap, first write wins, no backfill) |
+| L2 | `POST /v1/nowcast/snapshots` | Append-only `/latest` snapshots by EPT hour-beginning (90-day cap, first write wins, no backfill). Independent of actuals prune. |
 | L3 | `POST /v1/nowcast/history/extended` | Up to 90-day actuals history, hourly buckets, prior-period comparison |
 
 Every nowcast payload includes `asOf`, `polledAt`, `ageSeconds`, `maxAgeSeconds`, and `stale`. Units are `USD/MWh` (prices/spreads) and `MW` (load).

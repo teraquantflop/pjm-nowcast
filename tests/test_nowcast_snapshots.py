@@ -113,6 +113,74 @@ def test_capabilities_mentions_snapshots(client):
     assert "POST /v1/nowcast/snapshots" in body["prices"]
 
 
+def test_prune_with_poll_run_and_snapshot_child(tmp_path):
+    store = Store(tmp_path / "prune.sqlite")
+    now = datetime.now(timezone.utc)
+    old_ts = now - timedelta(days=100)
+    oid = store.insert_observation(
+        ts=old_ts,
+        fetched_at=old_ts,
+        load_mw=100000.0,
+        rto_lmp=30.0,
+        published_peak_today_mw=None,
+        published_peak_tomorrow_mw=None,
+        quality=1.0,
+        source="test",
+        as_of_text=None,
+        load_ramp_mw=None,
+        zonals={"BGE": 32.0, "COMED": 25.0, "DOM": 31.0, "PEPCO": 33.0},
+    )
+    run_id = store.start_poll_run(old_ts)
+    store.finish_poll_run(
+        run_id, ok=True, finished_at=old_ts, observation_id=oid
+    )
+    hour = target_hour_ept(old_ts)
+    assert store.insert_nowcast_snapshot(
+        {
+            "fetched_at_utc": old_ts.isoformat(),
+            "asof": old_ts.isoformat(),
+            "target_hour_ept": hour,
+            "rto_nc": 30.0,
+            "zone_nc": '{"BGE": 32.0}',
+            "spr_nc": 8.0,
+            "load_nc": 100000.0,
+            "price_vol": None,
+            "price_vol_missing": True,
+            "mix_std_price": None,
+            "mix_n_obs": None,
+        }
+    )
+    store.prune(90, now=now)
+    assert store.latest() is None
+    snaps = store.list_nowcast_snapshots()
+    assert len(snaps) == 1
+    assert snaps[0]["rto_nc"] == 30.0
+    store.close()
+
+
+def test_prune_drops_old_actuals_without_children(tmp_path):
+    store = Store(tmp_path / "prune2.sqlite")
+    now = datetime.now(timezone.utc)
+    old_ts = now - timedelta(days=100)
+    store.insert_observation(
+        ts=old_ts,
+        fetched_at=old_ts,
+        load_mw=1.0,
+        rto_lmp=1.0,
+        published_peak_today_mw=None,
+        published_peak_tomorrow_mw=None,
+        quality=1.0,
+        source="test",
+        as_of_text=None,
+        load_ramp_mw=None,
+        zonals={},
+    )
+    store.prune(90, now=now)
+    assert store.latest() is None
+    assert store.count() == 0
+    store.close()
+
+
 def test_llms_mentions_snapshots(client):
     text = client.get("/llms.txt").text
     assert "/v1/nowcast/snapshots" in text

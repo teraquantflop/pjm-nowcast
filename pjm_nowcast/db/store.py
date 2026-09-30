@@ -221,10 +221,21 @@ class Store:
     def prune(self, retention_days: int, now: datetime | None = None) -> int:
         now = now or datetime.now(timezone.utc)
         cutoff = now - timedelta(days=retention_days)
+        cut = _iso(cutoff)
         with self._lock:
+            old_ids = "SELECT id FROM observations WHERE ts < ?"
+            self._conn.execute(
+                f"DELETE FROM zonal_lmps WHERE observation_id IN ({old_ids})",
+                (cut,),
+            )
+            self._conn.execute(
+                f"UPDATE poll_runs SET observation_id = NULL "
+                f"WHERE observation_id IN ({old_ids})",
+                (cut,),
+            )
             cur = self._conn.execute(
                 "DELETE FROM observations WHERE ts < ?",
-                (_iso(cutoff),),
+                (cut,),
             )
             deleted = int(cur.rowcount or 0)
             idem_cut = now - timedelta(hours=24)
@@ -236,10 +247,6 @@ class Store:
             self._conn.execute(
                 "DELETE FROM free_tier WHERE window_start < ?",
                 (_iso(ft_cut),),
-            )
-            self._conn.execute(
-                "DELETE FROM nowcast_snapshots WHERE asof < ?",
-                (_iso(cutoff),),
             )
             return deleted
 
