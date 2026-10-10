@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -17,7 +18,7 @@ from pjm_nowcast.spread_card import (
     SAMPLE_TAG,
     SPREAD_CARD_BUYER_BEWARE,
 )
-from pjm_nowcast.stats.descriptive import percentile, spread_of
+from pjm_nowcast.stats.descriptive import percentile
 
 ET = ZoneInfo("America/New_York")
 # PJM on-peak HE 8–23 = hour-beginning 07:00–22:00 EPT, weekdays, not NERC holidays.
@@ -119,13 +120,37 @@ def _hour_dt(iso: str) -> datetime:
     return _parse_iso(iso)
 
 
-def _closest_observation(
-    candidates: list[Observation], snapshot_asof: datetime
-) -> Observation | None:
+def _settled_observation(candidates: list[Observation]) -> Observation | None:
+    """Last print in the hour. Join key is target_hour_ept, not snapshot.asof."""
     if not candidates:
         return None
-    target = _as_utc(snapshot_asof)
-    return min(candidates, key=lambda o: abs((_as_utc(o.ts) - target).total_seconds()))
+    return max(candidates, key=lambda o: _as_utc(o.ts))
+
+
+def spr_act_from_obs(obs: Observation) -> float | None:
+    """Settled zone LMP minus settled RTO LMP. Not spr_nc, not p95-p05."""
+    rto = obs.rto_lmp
+    if rto is None:
+        return None
+    try:
+        rto_f = float(rto)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(rto_f):
+        return None
+    zones: list[float] = []
+    for raw in obs.zonals.values():
+        if raw is None:
+            continue
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(v):
+            zones.append(v)
+    if not zones:
+        return None
+    return max(zones) - rto_f
 
 
 def _pair_hours(
@@ -174,23 +199,25 @@ def _pair_hours(
             continue
         if not is_on_peak_hour(local):
             continue
-        spr_nc = snap.get("spr_nc")
+        spr_nc_f: float | None
         try:
-            spr_nc_f = float(spr_nc)
+            spr_nc_f = float(snap.get("spr_nc"))
+            if not math.isfinite(spr_nc_f):
+                spr_nc_f = None
         except (TypeError, ValueError):
-            continue
-        if spr_nc is None or not (spr_nc_f == spr_nc_f):  # NaN
-            continue
+            spr_nc_f = None
         asof_s = snap.get("asof")
         try:
             snap_asof = _parse_iso(str(asof_s)) if asof_s else hour_dt
         except ValueError:
             snap_asof = hour_dt
-        obs = _closest_observation(by_hour.get(hour_s, []), snap_asof)
+        obs = _settled_observation(by_hour.get(hour_s, []))
         if obs is None:
             continue
-        _p05, _p95, spr_act = spread_of(obs.zonals, settings.min_zones_for_spread)
+        spr_act = spr_act_from_obs(obs)
         if spr_act is None:
+            continue
+        if spr_nc_f is None:
             continue
         paired.append(
             PairedHour(

@@ -23,39 +23,44 @@ from pjm_nowcast.stats.probability_card import is_nerc_holiday, is_on_peak_hour
 
 ET = ZoneInfo("America/New_York")
 ASOF = datetime(2026, 6, 12, 16, 30, tzinfo=ET)
+RTO = 40.0
+ZONES = ("BGE", "COMED", "DOM", "PEPCO", "PSEG", "JCPL")
 
 
-def _zonals(spread: float) -> dict[str, float]:
-    return {
-        "BGE": 0.0,
-        "COMED": 0.0,
-        "DOM": 0.0,
-        "PEPCO": float(spread),
-        "PSEG": float(spread),
-        "JCPL": float(spread),
-    }
+def _zonals(spread: float, rto: float = RTO) -> dict[str, float]:
+    # All zones equal so p95-p05 is 0. Underlier is zone - rto.
+    return {z: rto + float(spread) for z in ZONES}
 
 
-def _seed_hour(store: Store, local: datetime, spr_act: float, spr_nc: float) -> None:
+def _obs(
+    store: Store,
+    ts: datetime,
+    spr_act: float,
+    *,
+    rto: float = RTO,
+) -> None:
     store.insert_observation(
-        ts=local,
-        fetched_at=local,
+        ts=ts,
+        fetched_at=ts,
         load_mw=100000.0,
-        rto_lmp=30.0,
+        rto_lmp=rto,
         published_peak_today_mw=None,
         published_peak_tomorrow_mw=None,
         quality=1.0,
         source="test",
         as_of_text=None,
         load_ramp_mw=None,
-        zonals=_zonals(spr_act),
+        zonals=_zonals(spr_act, rto),
     )
+
+
+def _snap(store: Store, hour: datetime, spr_nc: float) -> None:
     store.insert_nowcast_snapshot(
         {
-            "fetched_at_utc": local.astimezone(ET).isoformat(),
-            "asof": local.isoformat(),
-            "target_hour_ept": target_hour_ept(local),
-            "rto_nc": 30.0,
+            "fetched_at_utc": hour.astimezone(ET).isoformat(),
+            "asof": hour.isoformat(),
+            "target_hour_ept": target_hour_ept(hour),
+            "rto_nc": RTO,
             "zone_nc": None,
             "spr_nc": spr_nc,
             "load_nc": 100000.0,
@@ -65,6 +70,11 @@ def _seed_hour(store: Store, local: datetime, spr_act: float, spr_nc: float) -> 
             "mix_n_obs": None,
         }
     )
+
+
+def _seed_hour(store: Store, local: datetime, spr_act: float, spr_nc: float) -> None:
+    _obs(store, local, spr_act)
+    _snap(store, local, spr_nc)
 
 
 def seed_card_fixture(store: Store) -> None:
@@ -86,35 +96,9 @@ def seed_card_fixture(store: Store) -> None:
     _seed_hour(store, open_hour, 11.0, 30.0)
     # Unpaired: observation without snapshot, snapshot without observation.
     wed = datetime(2026, 6, 10, 12, 0, tzinfo=ET)
-    store.insert_observation(
-        ts=wed,
-        fetched_at=wed,
-        load_mw=1.0,
-        rto_lmp=1.0,
-        published_peak_today_mw=None,
-        published_peak_tomorrow_mw=None,
-        quality=1.0,
-        source="test",
-        as_of_text=None,
-        load_ramp_mw=None,
-        zonals=_zonals(99.0),
-    )
+    _obs(store, wed, 99.0)
     orphan = datetime(2026, 6, 10, 11, 0, tzinfo=ET)
-    store.insert_nowcast_snapshot(
-        {
-            "fetched_at_utc": orphan.isoformat(),
-            "asof": orphan.isoformat(),
-            "target_hour_ept": target_hour_ept(orphan),
-            "rto_nc": 1.0,
-            "zone_nc": None,
-            "spr_nc": 99.0,
-            "load_nc": 1.0,
-            "price_vol": None,
-            "price_vol_missing": True,
-            "mix_std_price": None,
-            "mix_n_obs": None,
-        }
-    )
+    _snap(store, orphan, 99.0)
     # Weekend hour must not pool.
     sat = datetime(2026, 6, 6, 14, 0, tzinfo=ET)
     _seed_hour(store, sat, 80.0, 80.0)
@@ -166,6 +150,45 @@ def test_card_rules(client, store):
     assert "black" not in body
     assert "buyerBeware" in body
     assert "not a forecast" in body["buyerBeware"]
+
+
+def test_settled_print_not_closest_asof(client, store):
+    """Old closest-asof join would report hitDays == 3 on this fixture."""
+    prints = (188.0, 447.0, 428.0, 746.0, 58.0)
+    nowcasts = (58.0, 145.0, 788.0, 931.0, 63.0)
+    days = (
+        datetime(2026, 10, 5).date(),
+        datetime(2026, 10, 6).date(),
+        datetime(2026, 10, 7).date(),
+        datetime(2026, 10, 8).date(),
+        datetime(2026, 10, 9).date(),
+    )
+    for i, day in enumerate(days):
+        quiet = 50.0 if i == 4 else 76.0
+        for hour, spr in ((10, 50.0), (14, quiet)):
+            local = datetime(day.year, day.month, day.day, hour, 0, tzinfo=ET)
+            _seed_hour(store, local, spr, spr)
+        hb18 = datetime(day.year, day.month, day.day, 18, 0, tzinfo=ET)
+        # Snapshot asof = hour start. Closest-asof would pick the nowcast print.
+        _snap(store, hb18, nowcasts[i])
+        _obs(store, hb18, nowcasts[i])
+        settled = hb18.replace(minute=45)
+        _obs(store, settled, prints[i])
+    asof = datetime(2026, 10, 9, 23, 0, tzinfo=ET)
+    r = client.post(
+        SPREAD_CARD_PATH,
+        json={"lookbackDays": 5, "asOf": asof.isoformat()},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["K"] == pytest.approx(76.0, abs=1.0)
+    assert body["hitDays"] == 4
+    latest = body["latestCompleteDay"]
+    assert latest["eptDate"] == "2026-10-09"
+    assert latest["spr_act"] == pytest.approx(58.0)
+    assert latest["spr_nc"] == pytest.approx(63.0)
+    assert latest["miss"] == pytest.approx(58.0 - 63.0)
+    assert latest["miss"] != pytest.approx(0.0)
 
 
 def test_open_hour_dropped_from_sample(client, store):
