@@ -57,6 +57,7 @@ class Settings(BaseSettings):
 
     public_base_url: str = "http://localhost:8000"
     public_icon_url: str | None = None
+    contact_email: str = ""
 
     cors_origin: str = ""
     trust_proxy: bool = False

@@ -81,3 +81,78 @@ def test_openapi_catalog_omits_payto(client):
         info = spec["paths"][path]["post"]["x-payment-info"]
         assert "accepts" not in info
         assert "payTo" not in str(info)
+
+
+def _request_schema(spec: dict, path: str) -> dict:
+    return spec["paths"][path]["post"]["requestBody"]["content"]["application/json"]["schema"]
+
+
+def test_x402scan_paths_inline_request_bodies(client):
+    from pjm_nowcast.spread_card import SPREAD_CARD_PATH
+
+    spec = client.get("/openapi.json").json()
+    swagger = client.get("/swagger.json").json()
+    assert swagger == spec
+
+    empty = {
+        "/v1/nowcast/regime",
+        "/v1/nowcast/spreads",
+    }
+    for path in empty:
+        schema = _request_schema(spec, path)
+        assert "$ref" not in schema, path
+        assert schema["type"] == "object"
+        assert schema["properties"] == {}
+        assert schema["description"] == "Empty body. POST {}."
+        assert "required" not in schema
+
+    asof = _request_schema(spec, "/v1/nowcast/asof")
+    assert "$ref" not in asof
+    assert asof["required"] == ["asof"]
+    assert asof["properties"]["asof"]["type"] == "string"
+
+    snaps = _request_schema(spec, "/v1/nowcast/snapshots")
+    assert "$ref" not in snaps
+    assert snaps["required"] == ["from", "to"]
+    assert snaps["properties"]["from"]["type"] == "string"
+    assert snaps["properties"]["to"]["type"] == "string"
+
+    card = _request_schema(spec, SPREAD_CARD_PATH)
+    assert "$ref" not in card
+    assert card["required"] == ["lookbackDays"]
+    assert card["properties"]["lookbackDays"]["type"] == "integer"
+    assert card["properties"]["asOf"]["type"] == "string"
+
+
+def test_openapi_contact_email_from_env(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from pjm_nowcast.api.app import create_app
+    from pjm_nowcast.settings import Settings
+
+    monkeypatch.setenv("ENV", "test")
+    monkeypatch.setenv("RUN_POLLER", "false")
+    monkeypatch.setenv("X402_DISABLED", "true")
+    monkeypatch.setenv("CONTACT_EMAIL", "owner@example.com")
+    settings = Settings(
+        env="test",
+        run_poller=False,
+        x402_disabled=True,
+        data_dir=tmp_path,
+        database_path=tmp_path / "o.sqlite",
+        public_base_url="http://testserver",
+        contact_email="owner@example.com",
+    )
+    app = create_app(settings)
+    with TestClient(app) as c:
+        spec = c.get("/openapi.json").json()
+        assert spec["info"]["contact"]["email"] == "owner@example.com"
+
+
+def test_openapi_omits_contact_when_email_unset(client):
+    spec = client.get("/openapi.json").json()
+    email = (client.app.state.settings.contact_email or "").strip()
+    if email:
+        assert spec["info"]["contact"]["email"] == email
+    else:
+        assert "contact" not in spec["info"]

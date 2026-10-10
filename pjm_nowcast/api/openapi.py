@@ -105,6 +105,60 @@ _REQUEST_MODELS = {
     SPREAD_CARD_PATH: ProbabilityCardRequest,
 }
 
+# x402scan reads OpenAPI requestBody and does not follow $ref. Inline these.
+_INLINE_REQUEST_BODIES: dict[str, dict[str, Any]] = {
+    "/v1/nowcast/regime": {
+        "type": "object",
+        "properties": {},
+        "description": "Empty body. POST {}.",
+    },
+    "/v1/nowcast/spreads": {
+        "type": "object",
+        "properties": {},
+        "description": "Empty body. POST {}.",
+    },
+    "/v1/nowcast/asof": {
+        "type": "object",
+        "properties": {
+            "asof": {
+                "type": "string",
+                "description": "ISO-8601 observation clock. Required. No interpolation.",
+            }
+        },
+        "required": ["asof"],
+    },
+    "/v1/nowcast/snapshots": {
+        "type": "object",
+        "properties": {
+            "from": {
+                "type": "string",
+                "description": "ISO-8601 start (inclusive). Capped at 90-day lookback.",
+            },
+            "to": {
+                "type": "string",
+                "description": "ISO-8601 end (exclusive).",
+            },
+        },
+        "required": ["from", "to"],
+    },
+    SPREAD_CARD_PATH: {
+        "type": "object",
+        "properties": {
+            "lookbackDays": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 30,
+                "description": "Trailing EPT calendar days. Default 5, max 30.",
+            },
+            "asOf": {
+                "type": "string",
+                "description": "Optional ISO-8601 sample end. Default: now.",
+            },
+        },
+        "required": ["lookbackDays"],
+    },
+}
+
 
 def payment_info(settings: Settings, path: str) -> dict[str, Any]:
     """Document terms for agents. No wallets or full challenge blob."""
@@ -133,11 +187,15 @@ def _ensure_components(schema: dict[str, Any]) -> dict[str, Any]:
 
 def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, Any]:
     schema["openapi"] = "3.1.0"
-    schema["info"] = {
+    info: dict[str, Any] = {
         "title": "pjm-nowcast",
         "version": __version__,
         "description": f"{WHAT_IT_IS} {WHAT_IT_IS_NOT} {DISCLAIMER}",
     }
+    email = (settings.contact_email or "").strip()
+    if email:
+        info["contact"] = {"email": email}
+    schema["info"] = info
     schema["servers"] = [{"url": settings.public_base_url.rstrip("/")}]
 
     comps = _ensure_components(schema)
@@ -305,11 +363,17 @@ def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, A
         post["summary"] = PAID_SUMMARIES[path]
         post["description"] = PAID_DESCRIPTIONS[path] + " " + DISCLAIMER
         post["x-payment-info"] = payment_info(settings, path)
+        if path in _INLINE_REQUEST_BODIES:
+            body_schema: dict[str, Any] = dict(_INLINE_REQUEST_BODIES[path])
+        else:
+            body_schema = {
+                "$ref": f"#/components/schemas/{_REQUEST_MODELS[path].__name__}"
+            }
         post["requestBody"] = {
             "required": False,
             "content": {
                 "application/json": {
-                    "schema": {"$ref": f"#/components/schemas/{_REQUEST_MODELS[path].__name__}"},
+                    "schema": body_schema,
                 }
             },
         }
