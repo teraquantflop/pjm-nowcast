@@ -41,7 +41,7 @@ from pjm_nowcast.payments.routes import (
     usdc_atomic_amount,
 )
 from pjm_nowcast.settings import Settings
-from pjm_nowcast.spread_card import SPREAD_CARD_PATH, spread_card_bazaar_extension
+from pjm_nowcast.payments.bazaar import bazaar_extension_for
 
 log = logging.getLogger("pjm_nowcast.payments")
 
@@ -233,8 +233,9 @@ def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
                 continue
             desc = PAID_DESCRIPTIONS[path]
             extra = {}
-            if path == SPREAD_CARD_PATH:
-                extra["extensions"] = spread_card_bazaar_extension()
+            bazaar = bazaar_extension_for(path)
+            if bazaar:
+                extra["extensions"] = bazaar
             routes[f"POST {path}"] = RouteConfig(
                 accepts=accepts,
                 mime_type="application/json",
@@ -318,8 +319,9 @@ def payment_required_payload(settings: Settings, path: str) -> dict[str, Any]:
         "accepts": accepts,
         "disclaimer": DISCLAIMER,
     }
-    if path == SPREAD_CARD_PATH:
-        payload["extensions"] = spread_card_bazaar_extension()
+    bazaar = bazaar_extension_for(path)
+    if bazaar:
+        payload["extensions"] = bazaar
     return payload
 
 

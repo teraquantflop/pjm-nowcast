@@ -157,3 +157,56 @@ def test_unpaid_probes_do_not_429(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
                 assert r.status_code == 402, path
                 r_get = c.get(path)
                 assert r_get.status_code == 402, path
+
+
+NOWCAST_BAZAAR_INPUTS = {
+    "/v1/nowcast/latest": {},
+    "/v1/nowcast/history": {"hours": 24},
+    "/v1/nowcast/history/extended": {"hours": 168},
+    "/v1/nowcast/regime": {},
+    "/v1/nowcast/spreads": {},
+    "/v1/nowcast/asof": {"asof": "2026-10-09T18:00:00-04:00"},
+    "/v1/nowcast/snapshots": {
+        "from": "2026-10-09T00:00:00-04:00",
+        "to": "2026-10-10T00:00:00-04:00",
+    },
+}
+
+
+def test_unpaid_nowcast_402_has_bazaar_input_and_output(enforcing_client):
+    from pjm_nowcast.payments.routes import PAID_DESCRIPTIONS
+    from pjm_nowcast.spread_card import SPREAD_CARD_PATH
+
+    for path, body in NOWCAST_BAZAAR_INPUTS.items():
+        r = enforcing_client.post(path, json={})
+        assert r.status_code == 402, path
+        challenge = _challenge(r)
+        assert challenge["resource"].get("description") == PAID_DESCRIPTIONS[path]
+        info = (challenge.get("extensions") or {}).get("bazaar", {}).get("info") or {}
+        assert "input" in info, path
+        assert "output" in info, path
+        assert (challenge["extensions"]["bazaar"].get("schema")), path
+        assert info["input"].get("body") == body, path
+        example = info["output"].get("example") or {}
+        if path == "/v1/nowcast/snapshots":
+            assert "asof" in (example.get("snapshots") or [{}])[0]
+            assert "no stored nowcast" in example["disclaimer"]
+            assert "ageSeconds" not in example
+        else:
+            assert "asOf" in example, path
+            assert "ageSeconds" in example, path
+        if path == "/v1/nowcast/regime":
+            assert "entropy" in example
+            assert "posteriors" in example
+            assert "kStar" in example
+        if path == "/v1/nowcast/spreads":
+            assert "zones" in example
+            assert "points" not in example
+
+    card = enforcing_client.post(SPREAD_CARD_PATH, json={})
+    assert card.status_code == 402
+    card_ch = _challenge(card)
+    card_info = card_ch["extensions"]["bazaar"]["info"]
+    assert "input" in card_info
+    assert "output" in card_info
+    assert card_info["input"]["body"] == {"lookbackDays": 5}

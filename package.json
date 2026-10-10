@@ -1,0 +1,25 @@
+{
+  "name": "pjm-nowcast-bazaar-bootstrap",
+  "private": true,
+  "version": "1.0.0",
+  "description": "One-shot Base USDC client to list paid pjm-nowcast routes on Coinbase Bazaar.",
+  "type": "module",
+  "scripts": {
+    "bootstrap:bazaar": "tsx clients/bootstrap-bazaar.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@x402/core": "2.22.0",
+    "@x402/evm": "2.22.0",
+    "@x402/fetch": "2.22.0",
+    "dotenv": "^16.4.7",
+    "tsx": "^4.19.3",
+    "viem": "^2.23.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "typescript": "^5.8.2"
+  }
+}

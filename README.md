@@ -81,6 +81,32 @@ Receive addresses (public only; never spending keys):
 
 Mainnet notes: these are real USDC transfers. Confirm each pay-to address can receive USDC on that chain. Start with small `PRICE_*`. Facilitator catalog listing is not guaranteed by a successful settle.
 
+## Coinbase Bazaar bootstrap (one-shot)
+
+Local buyer client. It is not a server process. Do not set `EVM_PRIVATE_KEY` on Railway — the API refuses to start if a spending key is present.
+
+Coinbase Bazaar lists a paid URL after the first settled payment on that exact path, on Base, through the **Coinbase CDP** facilitator, with `extensions.bazaar` echoed in the payment payload. A prior Solana settle does not list the route on Coinbase Bazaar. Paying again does not raise rank.
+
+1. Confirm `GET /health` reports `facilitators.base` = `cdp` (both `CDP_API_KEY_ID` and `CDP_API_KEY_SECRET` on the server).
+2. Fund a Base mainnet wallet with USDC (`eip155:8453`, Circle USDC `0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`). That wallet pays `PAY_TO_EVM_ADDRESS`.
+3. In a **local** `.env` (never the Railway service):
+
+```bash
+EVM_PRIVATE_KEY=0x…          # 64 hex chars after 0x
+PUBLIC_BASE_URL=https://pjm-nowcast-production.up.railway.app
+```
+
+4. Run once:
+
+```bash
+npm install
+npm run bootstrap:bazaar
+```
+
+The script walks each paid path once. Unpaid POST first. If `PAYMENT-REQUIRED` has no `extensions.bazaar`, it prints the path and does not pay. If bazaar is present, it pays **exactly once** on Base exact USDC and copies that bazaar blob into the payment payload. No retry, no second paid call to the same path.
+
+5. Confirm the settle: a paid line must show `bazaarEchoed=true`, `httpStatus=200`, `paymentStatus=settled`. Then stop. A listing that sees no settlement for 30 days is dropped.
+
 ## MCP client
 
 Connect a Streamable HTTP MCP client to `$PUBLIC_BASE_URL/mcp` (Railway: `https://pjm-nowcast-production.up.railway.app/mcp`). `MCP_ENABLED=true` by default. No API key for discovery.
