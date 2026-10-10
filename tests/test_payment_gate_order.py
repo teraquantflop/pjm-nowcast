@@ -210,3 +210,59 @@ def test_unpaid_nowcast_402_has_bazaar_input_and_output(enforcing_client):
     assert "input" in card_info
     assert "output" in card_info
     assert card_info["input"]["body"] == {"lookbackDays": 5}
+
+
+def _bazaar_schema(resp) -> dict:
+    challenge = _challenge(resp)
+    schema = (challenge.get("extensions") or {}).get("bazaar", {}).get("schema")
+    assert isinstance(schema, dict), challenge
+    assert "properties" in schema
+    return schema
+
+
+def test_unpaid_402_bazaar_has_input_schema(enforcing_client):
+    from pjm_nowcast.spread_card import SPREAD_CARD_PATH
+
+    empty_paths = (
+        "/v1/nowcast/latest",
+        "/v1/nowcast/regime",
+        "/v1/nowcast/spreads",
+    )
+    for path in empty_paths:
+        r = enforcing_client.post(path, json={})
+        assert r.status_code == 402, path
+        schema = _bazaar_schema(r)
+        assert schema.get("type") == "object"
+        assert isinstance(schema["properties"], dict)
+        assert schema.get("required") in (None, [])
+
+    asof = enforcing_client.post("/v1/nowcast/asof", json={})
+    assert asof.status_code == 402
+    asof_schema = _bazaar_schema(asof)
+    assert asof_schema["required"] == ["asof"]
+    assert asof_schema["properties"]["asof"]["type"] == "string"
+
+    snaps = enforcing_client.post("/v1/nowcast/snapshots", json={})
+    assert snaps.status_code == 402
+    snap_schema = _bazaar_schema(snaps)
+    assert snap_schema["required"] == ["from", "to"]
+    assert snap_schema["properties"]["from"]["type"] == "string"
+    assert snap_schema["properties"]["to"]["type"] == "string"
+
+    card = enforcing_client.post(SPREAD_CARD_PATH, json={})
+    assert card.status_code == 402
+    card_schema = _bazaar_schema(card)
+    assert card_schema["required"] == ["lookbackDays"]
+    assert card_schema["properties"]["lookbackDays"]["type"] == "integer"
+
+    history = enforcing_client.post("/v1/nowcast/history", json={})
+    assert history.status_code == 402
+    hist_schema = _bazaar_schema(history)
+    assert hist_schema["properties"]["windowHours"]["type"] == "integer"
+    assert hist_schema.get("required") in (None, [])
+
+    extended = enforcing_client.post("/v1/nowcast/history/extended", json={})
+    assert extended.status_code == 402
+    ext_schema = _bazaar_schema(extended)
+    assert ext_schema["properties"]["windowHours"]["type"] == "integer"
+    assert ext_schema.get("required") in (None, [])

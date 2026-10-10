@@ -82,44 +82,31 @@ def spread_card_input_schema() -> dict[str, Any]:
     }
 
 
+def spread_card_bazaar_schema() -> dict[str, Any]:
+    """Request-body schema Coinbase Bazaar indexes at extensions.bazaar.schema."""
+    schema = dict(spread_card_input_schema())
+    schema["required"] = ["lookbackDays"]
+    return schema
+
+
 def spread_card_bazaar_extension() -> dict[str, Any]:
     """x402 Bazaar body-discovery blob for this route only."""
-    try:
-        from x402.extensions.bazaar import OutputConfig, declare_discovery_extension
-
-        return declare_discovery_extension(
-            input=SPREAD_CARD_EXAMPLE_REQUEST,
-            input_schema=spread_card_input_schema(),
-            body_type="json",
-            output=OutputConfig(
-                example=SPREAD_CARD_EXAMPLE_CARD,
-                schema=spread_card_output_schema(),
-            ),
-        )
-    except Exception:
-        return {
-            "bazaar": {
-                "info": {
-                    "input": {
-                        "type": "http",
-                        "bodyType": "json",
-                        "body": SPREAD_CARD_EXAMPLE_REQUEST,
-                    },
-                    "output": {
-                        "type": "json",
-                        "example": SPREAD_CARD_EXAMPLE_CARD,
-                    },
+    return {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "bodyType": "json",
+                    "body": SPREAD_CARD_EXAMPLE_REQUEST,
                 },
-                "schema": {
-                    "type": "object",
-                    "required": ["input"],
-                    "properties": {
-                        "input": {"type": "object"},
-                        "output": {"type": "object"},
-                    },
+                "output": {
+                    "type": "json",
+                    "example": SPREAD_CARD_EXAMPLE_CARD,
                 },
-            }
+            },
+            "schema": spread_card_bazaar_schema(),
         }
+    }
 
 
 def spread_card_output_schema() -> dict[str, Any]:

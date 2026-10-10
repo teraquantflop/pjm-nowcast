@@ -109,7 +109,7 @@ _SNAPSHOTS_OUT: dict[str, Any] = {
     ],
 }
 
-_EMPTY_OBJECT = {"type": "object", "additionalProperties": False}
+_EMPTY_OBJECT: dict[str, Any] = {"type": "object", "properties": {}}
 
 _LATEST_IN_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -122,32 +122,45 @@ _LATEST_IN_SCHEMA: dict[str, Any] = {
             },
         }
     },
-    "additionalProperties": False,
 }
 
 _HISTORY_IN_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "hours": {
+        "windowHours": {
             "type": "integer",
             "minimum": 1,
             "maximum": 72,
             "description": "Trailing window in hours. Default 24. L2 max 72.",
-        }
+        },
+        "families": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": ["rto_lmp", "zonal_spread", "rto_load"],
+            },
+        },
     },
-    "additionalProperties": False,
 }
 
 _EXTENDED_IN_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "hours": {
+        "windowHours": {
             "type": "integer",
             "minimum": 1,
             "description": "Trailing window in hours. Default 168, capped by retention.",
-        }
+        },
+        "families": {
+            "type": "array",
+            "items": {
+                "type": "string",
+                "enum": ["rto_lmp", "zonal_spread", "rto_load"],
+            },
+        },
+        "resolution": {"type": "string", "enum": ["native", "hourly"]},
+        "compare": {"type": "string", "enum": ["none", "prior_period"]},
     },
-    "additionalProperties": False,
 }
 
 _ASOF_IN_SCHEMA: dict[str, Any] = {
@@ -155,11 +168,10 @@ _ASOF_IN_SCHEMA: dict[str, Any] = {
     "properties": {
         "asof": {
             "type": "string",
-            "description": "ISO-8601 observation clock. Required. No interpolation.",
+            "description": "ISO-8601 observation clock with offset. Required. No interpolation.",
         }
     },
     "required": ["asof"],
-    "additionalProperties": False,
 }
 
 _SNAPSHOTS_IN_SCHEMA: dict[str, Any] = {
@@ -167,11 +179,14 @@ _SNAPSHOTS_IN_SCHEMA: dict[str, Any] = {
     "properties": {
         "from": {
             "type": "string",
-            "description": "ISO-8601 start (inclusive). Capped at 90-day lookback.",
+            "description": "ISO-8601 start with offset (inclusive). Capped at 90-day lookback.",
         },
-        "to": {"type": "string", "description": "ISO-8601 end (exclusive)."},
+        "to": {
+            "type": "string",
+            "description": "ISO-8601 end with offset (exclusive).",
+        },
     },
-    "additionalProperties": False,
+    "required": ["from", "to"],
 }
 
 _ENVELOPE_PROPS: dict[str, Any] = {
@@ -266,32 +281,15 @@ def _declare(
     example: dict[str, Any],
     output_schema: dict[str, Any],
 ) -> dict[str, Any]:
-    try:
-        from x402.extensions.bazaar import OutputConfig, declare_discovery_extension
-
-        return declare_discovery_extension(
-            input=body,
-            input_schema=input_schema,
-            body_type="json",
-            output=OutputConfig(example=example, schema=output_schema),
-        )
-    except Exception:
-        return {
-            "bazaar": {
-                "info": {
-                    "input": {"type": "http", "bodyType": "json", "body": body},
-                    "output": {"type": "json", "example": example},
-                },
-                "schema": {
-                    "type": "object",
-                    "required": ["input"],
-                    "properties": {
-                        "input": {"type": "object"},
-                        "output": {"type": "object"},
-                    },
-                },
-            }
+    return {
+        "bazaar": {
+            "info": {
+                "input": {"type": "http", "bodyType": "json", "body": body},
+                "output": {"type": "json", "example": example},
+            },
+            "schema": input_schema,
         }
+    }
 
 
 _NOWCAST: dict[str, dict[str, Any]] = {
