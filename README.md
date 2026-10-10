@@ -15,6 +15,7 @@ HTTP and MCP request handlers only read a local SQLite store. A background polle
 | L2 | `POST /v1/nowcast/history` | 1–72h actuals history (native poll points) |
 | L2 | `POST /v1/nowcast/snapshots` | Append-only `/latest` snapshots by EPT hour-beginning (90-day cap, first write wins, no backfill). Independent of actuals prune. |
 | L3 | `POST /v1/nowcast/history/extended` | Up to 90-day actuals history, hourly buckets, prior-period comparison |
+| spread card | `POST /v1/spread/probability-card` | PJM zonal spread jump probability: empirical probability card for the evening congestion bar ($0.25). whenToUse: next on-peak day or trailing congestion-season check. whenNotToUse: month-ahead, season-ahead, Black vol, a price forecast. Related: https://derivatives-pricer-production.up.railway.app |
 
 Every nowcast payload includes `asOf`, `polledAt`, `ageSeconds`, `maxAgeSeconds`, and `stale`. Units are `USD/MWh` (prices/spreads) and `MW` (load).
 
@@ -89,7 +90,7 @@ curl -sS "$PUBLIC_BASE_URL/mcp" -H 'content-type: application/json' \
   -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
 ```
 
-Free tools: `health`, `service_info`, `demo_sample` (GET `/v1/demo/sample` unpaid synthetic fixture, not live PJM). Paid: `nowcast_latest` ($0.02), `nowcast_history` ($0.10), `nowcast_snapshots` ($0.10), `nowcast_history_extended` ($0.25) — x402 USDC exact on configured networks. Unpaid paid-tool calls stay JSON-RPC 200 with `paymentStatus: "required"`. HTTP `POST /v1/nowcast/*` without payment is still 402.
+Free tools: `health`, `service_info`, `demo_sample` (GET `/v1/demo/sample` unpaid synthetic fixture, not live PJM). Paid: `nowcast_latest` ($0.02), `nowcast_history` ($0.10), `nowcast_snapshots` ($0.10), `nowcast_history_extended` ($0.25), `spread_probability_card` ($0.25) — x402 USDC exact on configured networks. Unpaid paid-tool calls stay JSON-RPC 200 with `paymentStatus: "required"`. HTTP `POST /v1/nowcast/*` and `POST /v1/spread/probability-card` without payment is still 402.
 
 ## Railway
 

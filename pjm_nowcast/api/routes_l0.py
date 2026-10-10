@@ -122,8 +122,7 @@ def demo_sample():
 
 _DEMO_POST_MESSAGE = (
     "Do not POST /v1/demo/sample. Use GET for the synthetic unpaid fixture. "
-    "Paid nowcast routes are POST /v1/nowcast/latest, /v1/nowcast/history, "
-    "and /v1/nowcast/history/extended."
+    "Paid routes include POST /v1/nowcast/* and POST /v1/spread/probability-card."
 )
 
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_UP
 
 from pjm_nowcast.settings import Settings
+from pjm_nowcast.spread_card import SPREAD_CARD_PATH, spread_card_description
 
 PAID_ROUTES: dict[str, str] = {
     "/v1/nowcast/latest": "l1",
@@ -14,6 +15,7 @@ PAID_ROUTES: dict[str, str] = {
     "/v1/nowcast/spreads": "l1",
     "/v1/nowcast/asof": "l1",
     "/v1/nowcast/snapshots": "l2",
+    SPREAD_CARD_PATH: "spread_card",
 }
 
 FREE_TIER_ELIGIBLE = {"/v1/nowcast/latest"}
@@ -41,6 +43,7 @@ PAID_DESCRIPTIONS: dict[str, str] = {
         "Append-only archive of /latest snapshots by EPT hour-beginning. "
         "Not a forward forecast. Pre-store hours have no row."
     ),
+    SPREAD_CARD_PATH: spread_card_description(),
 }
 
 # USDC has 6 decimals. Dollar prices are unchanged; these are the atomic strings
@@ -80,6 +83,8 @@ def price_for(path: str, settings: Settings) -> str:
         return settings.price_l2
     if tier == "l3":
         return settings.price_l3
+    if tier == "spread_card":
+        return settings.price_spread_card
     return "$0.00"
 
 

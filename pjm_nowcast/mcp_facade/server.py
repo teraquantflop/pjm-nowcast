@@ -29,6 +29,21 @@ from pjm_nowcast.payments.optionbook import HEADER as OPTIONBOOK_HEADER
 from pjm_nowcast.payments.optionbook import header_matches
 from pjm_nowcast.payments.routes import price_for, public_network_names
 from pjm_nowcast.settings import Settings
+from pjm_nowcast.spread_card import (
+    SPREAD_CARD_MCP_TOOL,
+    SPREAD_CARD_PATH,
+    SPREAD_CARD_RELATED,
+    SPREAD_CARD_WHEN_NOT_TO_USE,
+    SPREAD_CARD_WHEN_TO_USE,
+    spread_card_description,
+    spread_card_input_schema,
+    spread_card_output_schema,
+)
+from pjm_nowcast.stats.probability_card import (
+    InsufficientSample,
+    InvalidCardRequest,
+    assemble_probability_card,
+)
 
 router = APIRouter(include_in_schema=False)
 
@@ -272,6 +287,29 @@ def tool_catalog(settings: Settings) -> list[dict[str, Any]]:
             "paid": True,
             "http_path": "/v1/nowcast/snapshots",
         },
+        {
+            "name": SPREAD_CARD_MCP_TOOL,
+            "description": (
+                f"POST {SPREAD_CARD_PATH}. {spread_card_description()} "
+                f"whenToUse: {SPREAD_CARD_WHEN_TO_USE}. "
+                f"whenNotToUse: {SPREAD_CARD_WHEN_NOT_TO_USE}. "
+                + DISCLAIMER
+                + f" Payment: x402 USDC exact on configured networks "
+                f"({', '.join(public_network_names(settings))}). "
+                f"Price {price_for(SPREAD_CARD_PATH, settings)}. "
+                "Without payment the tool result is paymentStatus=required. "
+                "POST the matching HTTP path and decode the PAYMENT-REQUIRED header. "
+                f"Related resource: {SPREAD_CARD_RELATED}."
+            ),
+            "inputSchema": spread_card_input_schema(),
+            "outputSchema": spread_card_output_schema(),
+            "annotations": {"readOnlyHint": True},
+            "paid": True,
+            "http_path": SPREAD_CARD_PATH,
+            "whenToUse": SPREAD_CARD_WHEN_TO_USE,
+            "whenNotToUse": SPREAD_CARD_WHEN_NOT_TO_USE,
+            "relatedResource": SPREAD_CARD_RELATED,
+        },
     ]
 
 
@@ -287,6 +325,12 @@ def _public_tool(settings: Settings, tool: dict[str, Any]) -> dict[str, Any]:
         out["annotations"] = tool["annotations"]
     if tool.get("paid"):
         out["_meta"] = {"x402": _x402_meta(settings, tool["http_path"])}
+    if tool.get("whenToUse"):
+        out["whenToUse"] = tool["whenToUse"]
+    if tool.get("whenNotToUse"):
+        out["whenNotToUse"] = tool["whenNotToUse"]
+    if tool.get("relatedResource"):
+        out["relatedResource"] = tool["relatedResource"]
     return out
 
 
@@ -534,5 +578,35 @@ def _call_tool(request: Request, settings: Settings, params: dict[str, Any]) -> 
         start = parse_asof(str(args["from"]).strip()) if args.get("from") else None
         end = parse_asof(str(args["to"]).strip()) if args.get("to") else None
         body = assemble_snapshots(store, settings, start=start, end=end)
+        return _text_result(_with_status(body, "paid"))
+    if name == SPREAD_CARD_MCP_TOOL:
+        from pjm_nowcast.api.routes_nowcast import _parse_asof as parse_asof
+
+        lookback = int(args.get("lookbackDays") or 5)
+        pinned = None
+        raw_asof = args.get("asOf")
+        if raw_asof:
+            pinned = parse_asof(str(raw_asof).strip())
+            if pinned is None:
+                return _text_result(
+                    {"error": "invalid_request", "message": "asOf must be ISO-8601"},
+                    is_error=True,
+                )
+        try:
+            body = assemble_probability_card(
+                store, settings, lookback_days=lookback, as_of=pinned
+            )
+        except InvalidCardRequest as exc:
+            return _text_result(
+                {"error": "invalid_request", "message": str(exc)},
+                is_error=True,
+            )
+        except InsufficientSample as exc:
+            return _text_result(
+                {"error": "insufficient_sample", "message": str(exc)},
+                is_error=True,
+            )
+        if body is None:
+            return _text_result({"error": "data_unavailable"}, is_error=True)
         return _text_result(_with_status(body, "paid"))
     return _text_result({"error": "unknown_tool"}, is_error=True)

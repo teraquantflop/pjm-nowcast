@@ -15,6 +15,21 @@ from pjm_nowcast.payments.routes import (
     public_network_names,
 )
 from pjm_nowcast.settings import Settings
+from pjm_nowcast.spread_card import (
+    SPREAD_CARD_BAR,
+    SPREAD_CARD_EXAMPLE_CARD,
+    SPREAD_CARD_EXAMPLE_REQUEST,
+    SPREAD_CARD_MCP_TOOL,
+    SPREAD_CARD_PATH,
+    SPREAD_CARD_PRODUCT,
+    SPREAD_CARD_RELATED,
+    SPREAD_CARD_RELATED_NOTE,
+    SPREAD_CARD_TITLE,
+    SPREAD_CARD_WHEN_NOT_TO_USE,
+    SPREAD_CARD_WHEN_TO_USE,
+    spread_card_description,
+    spread_card_input_schema,
+)
 
 DEMO_PATH = Path(__file__).resolve().parents[2] / "fixtures" / "demo" / "sample.json"
 
@@ -41,7 +56,7 @@ WHEN_NOT_TO_USE = (
 )
 
 TAGS = ["pjm", "lmp", "load", "spread", "electricity"]
-JOB_TAGS = ["mark", "realized_vol", "regime", "spreads", "asof"]
+JOB_TAGS = ["mark", "realized_vol", "regime", "spreads", "asof", "spread_jump"]
 
 MCP_ACCEPT = "application/json, text/event-stream"
 MCP_CURL = (
@@ -198,6 +213,7 @@ def capabilities_payload(settings: Settings) -> dict[str, Any]:
             "POST /v1/nowcast/spreads": settings.price_l1,
             "POST /v1/nowcast/asof": settings.price_l1,
             "POST /v1/nowcast/snapshots": settings.price_l2,
+            f"POST {SPREAD_CARD_PATH}": settings.price_spread_card,
         },
         "maxSizes": {
             "historyHours": settings.l2_max_hours,
@@ -215,6 +231,7 @@ def service_card(settings: Settings) -> dict:
         "POST /v1/nowcast/latest": settings.price_l1,
         "POST /v1/nowcast/history": settings.price_l2,
         "POST /v1/nowcast/history/extended": settings.price_l3,
+        f"POST {SPREAD_CARD_PATH}": settings.price_spread_card,
     }
 
     latest_schema = {
@@ -282,6 +299,12 @@ def service_card(settings: Settings) -> dict:
         "networks": public_network_names(settings),
         "facilitators": settings.facilitator_status(),
         "prices": prices,
+        "relatedResources": [
+            {
+                "url": SPREAD_CARD_RELATED,
+                "description": SPREAD_CARD_RELATED_NOTE,
+            }
+        ],
         "mcp": mcp_mount(settings),
         "staleness": {
             "asOf": "Observation clock of the latest stored sample (America/New_York).",
@@ -474,6 +497,25 @@ def service_card(settings: Settings) -> dict:
                 ),
                 "exampleRequest": {"from": "2026-08-01T00:00:00Z", "to": "2026-08-08T00:00:00Z"},
             },
+            {
+                "tier": "spread_card",
+                "method": "POST",
+                "path": SPREAD_CARD_PATH,
+                "price": settings.price_spread_card,
+                "description": spread_card_description(),
+                "tags": [SPREAD_CARD_TITLE, SPREAD_CARD_PRODUCT, SPREAD_CARD_BAR],
+                "whenToUse": SPREAD_CARD_WHEN_TO_USE,
+                "whenNotToUse": SPREAD_CARD_WHEN_NOT_TO_USE,
+                "relatedResources": [
+                    {
+                        "url": SPREAD_CARD_RELATED,
+                        "description": SPREAD_CARD_RELATED_NOTE,
+                    }
+                ],
+                "inputSchema": spread_card_input_schema(),
+                "exampleRequest": SPREAD_CARD_EXAMPLE_REQUEST,
+                "exampleResponse": SPREAD_CARD_EXAMPLE_CARD,
+            },
         ],
     }
     card["endpoints"] = [e for e in card["endpoints"] if e]
@@ -511,6 +553,14 @@ def skill_markdown(settings: Settings) -> str:
             f"- POST /v1/nowcast/latest — {settings.price_l1} — MCP tool nowcast_latest",
             f"- POST /v1/nowcast/history — {settings.price_l2} — MCP tool nowcast_history",
             f"- POST /v1/nowcast/history/extended — {settings.price_l3} — MCP tool nowcast_history_extended",
+            f"- POST {SPREAD_CARD_PATH} — {settings.price_spread_card} — MCP tool {SPREAD_CARD_MCP_TOOL}",
+            "",
+            f"{SPREAD_CARD_TITLE}. {SPREAD_CARD_PRODUCT} for the {SPREAD_CARD_BAR}.",
+            f"whenToUse: {SPREAD_CARD_WHEN_TO_USE}.",
+            f"whenNotToUse: {SPREAD_CARD_WHEN_NOT_TO_USE}.",
+            f"Related resource: {SPREAD_CARD_RELATED} — {SPREAD_CARD_RELATED_NOTE}.",
+            "Example: {\"lookbackDays\": 5}",
+            'Truncated card: {"sample":{"tag":"high-congestion-season","dayCount":5},"K":12.4,"hitRate":0.4,"avgPayoff":1.8}',
             "",
             "Example paid request:",
             "",
@@ -552,7 +602,7 @@ def llms_txt(settings: Settings) -> str:
                 f"- Accept: {MCP_ACCEPT}",
                 f"- Example: {MCP_CURL.replace('$PUBLIC_BASE_URL', base)}",
                 "- Free tools: health, service_info, demo_sample (GET /v1/demo/sample unpaid synthetic fixture, not live PJM)",
-                "- Paid tools: nowcast_latest, nowcast_history, nowcast_history_extended, nowcast_regime, nowcast_spreads, nowcast_asof, nowcast_snapshots (x402 USDC exact; unpaid → paymentStatus=required). Gate on stale/ageSeconds.",
+                "- Paid tools: nowcast_latest, nowcast_history, nowcast_history_extended, nowcast_regime, nowcast_spreads, nowcast_asof, nowcast_snapshots, spread_probability_card (x402 USDC exact; unpaid → paymentStatus=required). Gate on stale/ageSeconds.",
             ]
         )
     else:
@@ -577,6 +627,7 @@ def llms_txt(settings: Settings) -> str:
             f"- POST /v1/nowcast/spreads — {settings.price_l1} — MCP nowcast_spreads",
             f"- POST /v1/nowcast/asof — {settings.price_l1} — MCP nowcast_asof",
             f"- POST /v1/nowcast/snapshots — {settings.price_l2} — MCP nowcast_snapshots (append-only EPT-hour archive, 90-day cap, no backfill)",
+            f"- POST {SPREAD_CARD_PATH} — {settings.price_spread_card} — MCP {SPREAD_CARD_MCP_TOOL} — {SPREAD_CARD_TITLE}; {SPREAD_CARD_PRODUCT} for the {SPREAD_CARD_BAR}. whenToUse: {SPREAD_CARD_WHEN_TO_USE}. whenNotToUse: {SPREAD_CARD_WHEN_NOT_TO_USE}. Related: {SPREAD_CARD_RELATED}. Example: {{\"lookbackDays\": 5}}",
             "",
             "## Notes",
             AGENT_NOTES,
@@ -688,6 +739,19 @@ def well_known_x402(settings: Settings) -> dict:
                 "mcpTool": "nowcast_history_extended",
                 "description": "Extended descriptive history within retention.",
             },
+            {
+                "url": f"{base}{SPREAD_CARD_PATH}",
+                "method": "POST",
+                "price": settings.price_spread_card,
+                "mcpTool": SPREAD_CARD_MCP_TOOL,
+                "tags": ["spread_jump", "spreads"],
+                "description": spread_card_description(),
+                "whenToUse": SPREAD_CARD_WHEN_TO_USE,
+                "whenNotToUse": SPREAD_CARD_WHEN_NOT_TO_USE,
+                "relatedResource": SPREAD_CARD_RELATED,
+                "exampleRequest": SPREAD_CARD_EXAMPLE_REQUEST,
+                "exampleResponse": SPREAD_CARD_EXAMPLE_CARD,
+            },
         ],
         "free": [f"{base}{p}" for p in free_paths],
     }
@@ -764,6 +828,17 @@ def agent_card(settings: Settings) -> dict[str, Any]:
             "price": settings.price_l2,
             "paid": True,
         },
+        {
+            "name": SPREAD_CARD_MCP_TOOL,
+            "method": "POST",
+            "path": SPREAD_CARD_PATH,
+            "price": settings.price_spread_card,
+            "paid": True,
+            "description": spread_card_description(),
+            "whenToUse": SPREAD_CARD_WHEN_TO_USE,
+            "whenNotToUse": SPREAD_CARD_WHEN_NOT_TO_USE,
+            "relatedResource": SPREAD_CARD_RELATED,
+        },
     ]
     return {
         "name": "pjm-nowcast",
@@ -792,21 +867,27 @@ def x402_resources(settings: Settings) -> dict[str, Any]:
             "resolution": "native | hourly",
             "compare": "none | prior_period",
         },
+        SPREAD_CARD_PATH: spread_card_input_schema(),
     }
     resources = []
     for path in PAID_ROUTES:
-        resources.append(
-            {
-                "method": "POST",
-                "path": path,
-                "price": price_for(path, settings),
-                "scheme": "exact",
-                "asset": "USDC",
-                "networks": public_network_names(settings),
-                "description": PAID_DESCRIPTIONS.get(path, ""),
-                "inputSchema": schemas.get(path, {}),
-            }
-        )
+        item = {
+            "method": "POST",
+            "path": path,
+            "price": price_for(path, settings),
+            "scheme": "exact",
+            "asset": "USDC",
+            "networks": public_network_names(settings),
+            "description": PAID_DESCRIPTIONS.get(path, ""),
+            "inputSchema": schemas.get(path, {}),
+        }
+        if path == SPREAD_CARD_PATH:
+            item["whenToUse"] = SPREAD_CARD_WHEN_TO_USE
+            item["whenNotToUse"] = SPREAD_CARD_WHEN_NOT_TO_USE
+            item["relatedResource"] = SPREAD_CARD_RELATED
+            item["exampleRequest"] = SPREAD_CARD_EXAMPLE_REQUEST
+            item["exampleResponse"] = SPREAD_CARD_EXAMPLE_CARD
+        resources.append(item)
     return {
         "x402Version": 2,
         "url": public_base(settings),

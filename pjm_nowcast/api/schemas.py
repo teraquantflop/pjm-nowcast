@@ -61,6 +61,19 @@ class AsofRequest(BaseModel):
     )
 
 
+class ProbabilityCardRequest(BaseModel):
+    lookbackDays: int = Field(
+        default=5,
+        ge=1,
+        le=30,
+        description="Trailing EPT calendar days. Default 5, max 30.",
+    )
+    asOf: str | None = Field(
+        default=None,
+        description="Optional ISO-8601 sample end. Default: now.",
+    )
+
+
 class SnapshotsRequest(BaseModel):
     fromTime: str | None = Field(
         default=None,

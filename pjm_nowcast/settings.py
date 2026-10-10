@@ -90,6 +90,7 @@ class Settings(BaseSettings):
     price_l1: str = "$0.02"
     price_l2: str = "$0.10"
     price_l3: str = "$0.25"
+    price_spread_card: str = "$0.25"
 
     free_demo_enabled: bool = True
     free_tier_n: int = 0

@@ -18,6 +18,7 @@ EXPECTED_TOOLS = {
     "nowcast_spreads",
     "nowcast_asof",
     "nowcast_snapshots",
+    "spread_probability_card",
 }
 
 
@@ -33,14 +34,18 @@ def test_mcp_service_info_free(client):
     dumped = str(tools)
     assert '"payTo"' not in dumped
     assert "pay_to" not in dumped
-    paid = {t["name"]: t for t in tools if t["name"].startswith("nowcast_")}
+    paid = {t["name"]: t for t in tools if t.get("_meta", {}).get("x402")}
     for name, tool in paid.items():
         x402 = tool["_meta"]["x402"]
         assert x402["scheme"] == "exact"
         assert x402["asset"] == "USDC"
         assert x402["price"].startswith("$")
         assert "solana" in x402["networks"]
-        assert x402["httpPath"].startswith("/v1/nowcast/")
+        if name == "spread_probability_card":
+            assert x402["httpPath"] == "/v1/spread/probability-card"
+            assert x402["price"] == "$0.25"
+        else:
+            assert x402["httpPath"].startswith("/v1/nowcast/")
         props = tool["inputSchema"].get("properties") or {}
         if name in {"nowcast_latest", "nowcast_history", "nowcast_history_extended"}:
             assert "families" in props

@@ -41,6 +41,7 @@ from pjm_nowcast.payments.routes import (
     usdc_atomic_amount,
 )
 from pjm_nowcast.settings import Settings
+from pjm_nowcast.spread_card import SPREAD_CARD_PATH, spread_card_bazaar_extension
 
 log = logging.getLogger("pjm_nowcast.payments")
 
@@ -231,6 +232,9 @@ def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
             if not accepts:
                 continue
             desc = PAID_DESCRIPTIONS[path]
+            extra = {}
+            if path == SPREAD_CARD_PATH:
+                extra["extensions"] = spread_card_bazaar_extension()
             routes[f"POST {path}"] = RouteConfig(
                 accepts=accepts,
                 mime_type="application/json",
@@ -238,6 +242,7 @@ def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
                 service_name="pjm-nowcast",
                 tags=["pjm", "lmp", "load", "spread", "electricity"],
                 resource=resource_url(settings, path),
+                **extra,
             )
         if not routes:
             return None
@@ -306,13 +311,16 @@ def payment_required_payload(settings: Settings, path: str) -> dict[str, Any]:
                 price=price,
             )
         )
-    return {
+    payload: dict[str, Any] = {
         "x402Version": 2,
         "error": "Payment required",
         "resource": resource_object(settings, path),
         "accepts": accepts,
         "disclaimer": DISCLAIMER,
     }
+    if path == SPREAD_CARD_PATH:
+        payload["extensions"] = spread_card_bazaar_extension()
+    return payload
 
 
 async def _try_idempotency(

@@ -20,7 +20,14 @@ from pjm_nowcast.api.schemas import (
     ExtendedHistoryRequest,
     HistoryRequest,
     LatestRequest,
+    ProbabilityCardRequest,
     SnapshotsRequest,
+)
+from pjm_nowcast.spread_card import (
+    SPREAD_CARD_PATH,
+    SPREAD_CARD_EXAMPLE_CARD,
+    spread_card_description,
+    spread_card_output_schema,
 )
 from pjm_nowcast.payments.routes import PAID_ROUTES, price_for, public_network_names
 from pjm_nowcast.settings import Settings
@@ -49,6 +56,7 @@ PAID_SUMMARIES = {
     "/v1/nowcast/spreads": "Zone-level spread table for the latest print",
     "/v1/nowcast/asof": "Descriptive snapshot pinned to a historical asOf",
     "/v1/nowcast/snapshots": "Append-only /latest snapshots by EPT hour",
+    SPREAD_CARD_PATH: "PJM zonal spread jump probability",
 }
 
 PAID_DESCRIPTIONS = {
@@ -83,6 +91,7 @@ PAID_DESCRIPTIONS = {
         "First write wins. Not a forward forecast. Hours before this store have no row. "
         "Query window capped at maxHistoryDays (default 90)."
     ),
+    SPREAD_CARD_PATH: spread_card_description(),
 }
 
 _REQUEST_MODELS = {
@@ -93,6 +102,7 @@ _REQUEST_MODELS = {
     "/v1/nowcast/spreads": EmptyNowcastRequest,
     "/v1/nowcast/asof": AsofRequest,
     "/v1/nowcast/snapshots": SnapshotsRequest,
+    SPREAD_CARD_PATH: ProbabilityCardRequest,
 }
 
 
@@ -252,10 +262,12 @@ def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, A
         ("EmptyNowcastRequest", EmptyNowcastRequest),
         ("AsofRequest", AsofRequest),
         ("SnapshotsRequest", SnapshotsRequest),
+        ("ProbabilityCardRequest", ProbabilityCardRequest),
     ):
         comps["schemas"][name] = model.model_json_schema(
             ref_template="#/components/schemas/{model}"
         )
+    comps["schemas"]["ProbabilityCard"] = spread_card_output_schema()
 
     # Global default: paid. Free paths override with security: [].
     schema["security"] = [{"x402": []}]
@@ -302,14 +314,27 @@ def customize_openapi(schema: dict[str, Any], settings: Settings) -> dict[str, A
             },
         }
         responses = post.setdefault("responses", {})
-        responses["200"] = {
-            "description": "Descriptive statistics for the requested families.",
-            "content": {
-                "application/json": {
-                    "schema": {"$ref": "#/components/schemas/NowcastEnvelope"}
-                }
-            },
-        }
+        if path == SPREAD_CARD_PATH:
+            responses["200"] = {
+                "description": (
+                    "Empirical probability card. Not a forecast, not a mid, not Black vol."
+                ),
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/ProbabilityCard"},
+                        "example": SPREAD_CARD_EXAMPLE_CARD,
+                    }
+                },
+            }
+        else:
+            responses["200"] = {
+                "description": "Descriptive statistics for the requested families.",
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/NowcastEnvelope"}
+                    }
+                },
+            }
         responses["402"] = {"$ref": "#/components/responses/PaymentRequired"}
         responses["503"] = {"$ref": "#/components/responses/DataUnavailable"}
         if path != "/v1/nowcast/latest":

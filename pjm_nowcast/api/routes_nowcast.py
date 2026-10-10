@@ -10,10 +10,12 @@ from pjm_nowcast.api.schemas import (
     ExtendedHistoryRequest,
     HistoryRequest,
     LatestRequest,
+    ProbabilityCardRequest,
     SnapshotsRequest,
     parse_json_body,
 )
 from pjm_nowcast.settings import Settings
+from pjm_nowcast.spread_card import SPREAD_CARD_PATH
 from pjm_nowcast.stats.assemble import (
     assemble_asof,
     assemble_history,
@@ -21,6 +23,11 @@ from pjm_nowcast.stats.assemble import (
     assemble_regime,
     assemble_spreads,
     assemble_snapshots,
+)
+from pjm_nowcast.stats.probability_card import (
+    InsufficientSample,
+    InvalidCardRequest,
+    assemble_probability_card,
 )
 
 router = APIRouter()
@@ -172,3 +179,37 @@ async def snapshots(request: Request):
     if payload.toTime and end is None:
         return error_response(400, "invalid_request", "to must be ISO-8601.")
     return assemble_snapshots(request.app.state.store, settings, start=start, end=end)
+
+
+@router.post(
+    SPREAD_CARD_PATH,
+    summary="PJM zonal spread jump probability",
+    tags=["nowcast"],
+)
+async def spread_probability_card(request: Request):
+    settings: Settings = request.app.state.settings
+    raw = await request.body()
+    try:
+        payload = parse_json_body(raw, ProbabilityCardRequest)
+    except Exception as exc:
+        return error_response(400, "invalid_request", str(exc))
+    assert isinstance(payload, ProbabilityCardRequest)
+    pinned = None
+    if payload.asOf and payload.asOf.strip():
+        pinned = _parse_asof(payload.asOf.strip())
+        if pinned is None:
+            return error_response(400, "invalid_request", "asOf must be ISO-8601.")
+    try:
+        body = assemble_probability_card(
+            request.app.state.store,
+            settings,
+            lookback_days=payload.lookbackDays,
+            as_of=pinned,
+        )
+    except InvalidCardRequest as exc:
+        return error_response(400, "invalid_request", str(exc))
+    except InsufficientSample as exc:
+        return error_response(400, "insufficient_sample", str(exc))
+    if body is None:
+        return data_unavailable()
+    return body
