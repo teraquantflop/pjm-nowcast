@@ -18,7 +18,7 @@ from pjm_nowcast.spread_card import (
     SAMPLE_TAG,
     SPREAD_CARD_BUYER_BEWARE,
 )
-from pjm_nowcast.stats.descriptive import percentile
+from pjm_nowcast.stats.descriptive import percentile, spread_of
 
 ET = ZoneInfo("America/New_York")
 # PJM on-peak HE 8–23 = hour-beginning 07:00–22:00 EPT, weekdays, not NERC holidays.
@@ -120,37 +120,28 @@ def _hour_dt(iso: str) -> datetime:
     return _parse_iso(iso)
 
 
-def _settled_observation(candidates: list[Observation]) -> Observation | None:
-    """Last print in the hour. Join key is target_hour_ept, not snapshot.asof."""
-    if not candidates:
-        return None
-    return max(candidates, key=lambda o: _as_utc(o.ts))
+def spr_act_from_hour(
+    candidates: list[Observation], min_zones: int
+) -> float | None:
+    """Hourly mean of spread_of (p95-p05). Same series as optionbook spr_act.
 
-
-def spr_act_from_obs(obs: Observation) -> float | None:
-    """Settled zone LMP minus settled RTO LMP. Not spr_nc, not p95-p05."""
-    rto = obs.rto_lmp
-    if rto is None:
-        return None
-    try:
-        rto_f = float(rto)
-    except (TypeError, ValueError):
-        return None
-    if not math.isfinite(rto_f):
-        return None
-    zones: list[float] = []
-    for raw in obs.zonals.values():
-        if raw is None:
+    Drop an observation with no spread. Drop the hour if none remain.
+    Never max(zone) - rto, never last print only, never spr_nc.
+    """
+    spreads: list[float] = []
+    for obs in candidates:
+        _p05, _p95, spr = spread_of(obs.zonals, min_zones)
+        if spr is None:
             continue
         try:
-            v = float(raw)
+            v = float(spr)
         except (TypeError, ValueError):
             continue
         if math.isfinite(v):
-            zones.append(v)
-    if not zones:
+            spreads.append(v)
+    if not spreads:
         return None
-    return max(zones) - rto_f
+    return sum(spreads) / len(spreads)
 
 
 def _pair_hours(
@@ -211,10 +202,10 @@ def _pair_hours(
             snap_asof = _parse_iso(str(asof_s)) if asof_s else hour_dt
         except ValueError:
             snap_asof = hour_dt
-        obs = _settled_observation(by_hour.get(hour_s, []))
-        if obs is None:
-            continue
-        spr_act = spr_act_from_obs(obs)
+        spr_act = spr_act_from_hour(
+            by_hour.get(hour_s, []),
+            settings.min_zones_for_spread,
+        )
         if spr_act is None:
             continue
         if spr_nc_f is None:

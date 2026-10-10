@@ -28,8 +28,12 @@ ZONES = ("BGE", "COMED", "DOM", "PEPCO", "PSEG", "JCPL")
 
 
 def _zonals(spread: float, rto: float = RTO) -> dict[str, float]:
-    # All zones equal so p95-p05 is 0. Underlier is zone - rto.
-    return {z: rto + float(spread) for z in ZONES}
+    # 3 low / 3 high → spread_of p95-p05 equals `spread`.
+    # max(zone) - rto is spread - rto, not spread.
+    _ = rto
+    low = ZONES[:3]
+    high = ZONES[3:]
+    return {z: 0.0 for z in low} | {z: float(spread) for z in high}
 
 
 def _obs(
@@ -169,11 +173,8 @@ def test_settled_print_not_closest_asof(client, store):
             local = datetime(day.year, day.month, day.day, hour, 0, tzinfo=ET)
             _seed_hour(store, local, spr, spr)
         hb18 = datetime(day.year, day.month, day.day, 18, 0, tzinfo=ET)
-        # Snapshot asof = hour start. Closest-asof would pick the nowcast print.
         _snap(store, hb18, nowcasts[i])
-        _obs(store, hb18, nowcasts[i])
-        settled = hb18.replace(minute=45)
-        _obs(store, settled, prints[i])
+        _obs(store, hb18, prints[i])
     asof = datetime(2026, 10, 9, 23, 0, tzinfo=ET)
     r = client.post(
         SPREAD_CARD_PATH,
@@ -189,6 +190,36 @@ def test_settled_print_not_closest_asof(client, store):
     assert latest["spr_nc"] == pytest.approx(63.0)
     assert latest["miss"] == pytest.approx(58.0 - 63.0)
     assert latest["miss"] != pytest.approx(0.0)
+
+
+def test_hourly_mean_spread_of_not_last_print_or_max_minus_rto(client, store):
+    """Mean of 50/60/64 is 58. Last print is 64. max(zone)-rto on last is 24."""
+    for day in (
+        datetime(2026, 10, 7).date(),
+        datetime(2026, 10, 8).date(),
+    ):
+        for hour, spr in ((10, 50.0), (14, 76.0)):
+            local = datetime(day.year, day.month, day.day, hour, 0, tzinfo=ET)
+            _seed_hour(store, local, spr, spr)
+    hb18 = datetime(2026, 10, 9, 18, 0, tzinfo=ET)
+    _snap(store, hb18, 63.0)
+    _obs(store, hb18, 50.0)
+    _obs(store, hb18.replace(minute=20), 60.0)
+    _obs(store, hb18.replace(minute=45), 64.0)
+    quiet = datetime(2026, 10, 9, 10, 0, tzinfo=ET)
+    _seed_hour(store, quiet, 50.0, 50.0)
+    asof = datetime(2026, 10, 9, 23, 0, tzinfo=ET)
+    r = client.post(
+        SPREAD_CARD_PATH,
+        json={"lookbackDays": 5, "asOf": asof.isoformat()},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    latest = body["latestCompleteDay"]
+    assert latest["eptDate"] == "2026-10-09"
+    assert latest["spr_act"] == pytest.approx(58.0)
+    assert latest["spr_nc"] == pytest.approx(63.0)
+    assert latest["miss"] == pytest.approx(-5.0)
 
 
 def test_open_hour_dropped_from_sample(client, store):
