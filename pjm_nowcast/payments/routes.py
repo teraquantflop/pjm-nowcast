@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
+from typing import Any
 
 from pjm_nowcast.settings import Settings
 from pjm_nowcast.spread_card import SPREAD_CARD_PATH, spread_card_description
+
+SERVICE_NAME = "pjm-nowcast"
+MIME_JSON = "application/json"
 
 PAID_ROUTES: dict[str, str] = {
     "/v1/nowcast/latest": "l1",
@@ -46,6 +50,18 @@ PAID_DESCRIPTIONS: dict[str, str] = {
     SPREAD_CARD_PATH: spread_card_description(),
 }
 
+# PayAI Bazaar: ≤5 tags, each ≤32 printable ASCII.
+PAID_TAGS: dict[str, list[str]] = {
+    "/v1/nowcast/latest": ["pjm", "nowcast", "load", "spread", "lmp"],
+    "/v1/nowcast/history": ["pjm", "nowcast", "history", "load", "spread"],
+    "/v1/nowcast/history/extended": ["pjm", "nowcast", "history", "load", "spread"],
+    "/v1/nowcast/regime": ["pjm", "nowcast", "regime", "hmm", "lmp"],
+    "/v1/nowcast/spreads": ["pjm", "nowcast", "spread", "zonal", "lmp"],
+    "/v1/nowcast/asof": ["pjm", "nowcast", "asof", "spread", "lmp"],
+    "/v1/nowcast/snapshots": ["pjm", "nowcast", "residual", "archive", "spread"],
+    SPREAD_CARD_PATH: ["pjm", "spread", "on-peak", "residual", "jump"],
+}
+
 # USDC has 6 decimals. Dollar prices are unchanged; these are the atomic strings
 # scanners need: $0.02 → "20000", $0.10 → "100000", $0.25 → "250000".
 USDC_DECIMALS = 6
@@ -67,11 +83,25 @@ def resource_url(settings: Settings, path: str) -> str:
     return f"{settings.public_base_url.rstrip('/')}{path}"
 
 
-def resource_object(settings: Settings, path: str) -> dict[str, str]:
-    out = {"url": resource_url(settings, path)}
+def resource_icon_url(settings: Settings) -> str:
+    if settings.public_icon_url:
+        return settings.public_icon_url
+    return f"{settings.public_base_url.rstrip('/')}/favicon.ico"
+
+
+def resource_object(settings: Settings, path: str) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "url": resource_url(settings, path),
+        "mimeType": MIME_JSON,
+        "serviceName": SERVICE_NAME,
+        "iconUrl": resource_icon_url(settings),
+    }
     desc = PAID_DESCRIPTIONS.get(path)
     if desc:
         out["description"] = desc
+    tags = PAID_TAGS.get(path)
+    if tags:
+        out["tags"] = list(tags)
     return out
 
 

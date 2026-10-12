@@ -83,7 +83,7 @@ def spread_card_input_schema() -> dict[str, Any]:
 
 
 def spread_card_bazaar_schema() -> dict[str, Any]:
-    """Request-body schema Coinbase Bazaar indexes at extensions.bazaar.schema."""
+    """Request-body JSON Schema nested under bazaar.schema.properties.input.properties.body."""
     schema = dict(spread_card_input_schema())
     schema["required"] = ["lookbackDays"]
     return schema
@@ -91,22 +91,14 @@ def spread_card_bazaar_schema() -> dict[str, Any]:
 
 def spread_card_bazaar_extension() -> dict[str, Any]:
     """x402 Bazaar body-discovery blob for this route only."""
-    return {
-        "bazaar": {
-            "info": {
-                "input": {
-                    "type": "http",
-                    "bodyType": "json",
-                    "body": SPREAD_CARD_EXAMPLE_REQUEST,
-                },
-                "output": {
-                    "type": "json",
-                    "example": SPREAD_CARD_EXAMPLE_CARD,
-                },
-            },
-            "schema": spread_card_bazaar_schema(),
-        }
-    }
+    from pjm_nowcast.payments.bazaar import declare_http_json_discovery
+
+    return declare_http_json_discovery(
+        body=SPREAD_CARD_EXAMPLE_REQUEST,
+        input_schema=spread_card_bazaar_schema(),
+        example=SPREAD_CARD_EXAMPLE_CARD,
+        output_schema=spread_card_output_schema(),
+    )
 
 
 def spread_card_output_schema() -> dict[str, Any]:

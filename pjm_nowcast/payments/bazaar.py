@@ -1,8 +1,7 @@
 """x402 Bazaar body-discovery blobs for paid nowcast routes.
 
-The probability-card declaration lives in spread_card.py and is reused here
-unchanged. This module only adds the seven nowcast POSTs that previously
-shipped a 402 with no extensions.bazaar.
+``bazaar.schema`` validates ``info`` (PayAI / official SDK envelope).
+Request-body JSON Schema lives at ``schema.properties.input.properties.body``.
 """
 
 from __future__ import annotations
@@ -16,11 +15,11 @@ from pjm_nowcast.spread_card import SPREAD_CARD_PATH, spread_card_bazaar_extensi
 ASOF_EXAMPLE = "2026-10-09T18:00:00-04:00"
 
 _LATEST_IN: dict[str, Any] = {}
-_HISTORY_IN: dict[str, Any] = {"hours": 24}
-_EXTENDED_IN: dict[str, Any] = {"hours": 168}
+_HISTORY_IN: dict[str, Any] = {"windowHours": 24}
+_EXTENDED_IN: dict[str, Any] = {"windowHours": 168}
 _REGIME_IN: dict[str, Any] = {}
 _SPREADS_IN: dict[str, Any] = {}
-_ASOF_IN: dict[str, Any] = {"asof": ASOF_EXAMPLE}
+_ASOF_IN: dict[str, Any] = {"asOf": ASOF_EXAMPLE}
 _SNAPSHOTS_IN: dict[str, Any] = {
     "from": "2026-10-09T00:00:00-04:00",
     "to": "2026-10-10T00:00:00-04:00",
@@ -166,12 +165,12 @@ _EXTENDED_IN_SCHEMA: dict[str, Any] = {
 _ASOF_IN_SCHEMA: dict[str, Any] = {
     "type": "object",
     "properties": {
-        "asof": {
+        "asOf": {
             "type": "string",
             "description": "ISO-8601 observation clock with offset. Required. No interpolation.",
         }
     },
-    "required": ["asof"],
+    "required": ["asOf"],
 }
 
 _SNAPSHOTS_IN_SCHEMA: dict[str, Any] = {
@@ -274,6 +273,123 @@ _SNAPSHOTS_OUT_SCHEMA: dict[str, Any] = {
 }
 
 
+def declare_http_json_discovery(
+    *,
+    body: dict[str, Any],
+    input_schema: dict[str, Any],
+    example: dict[str, Any],
+    output_schema: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """PayAI/x402 v2 bazaar blob for a JSON POST.
+
+    Same envelope as ``declare_discovery_extension`` (info + schema that
+    validates info; request body at ``schema.properties.input.properties.body``).
+    ``method`` is set to POST here because unpaid probes use the local 402 stub
+    and never run ``bazaar_resource_server_extension`` enrichment.
+
+    Implemented locally: ``from x402.extensions.bazaar`` requires the optional
+    ``jsonschema`` extra, which this service does not install.
+    """
+    ext = _official_declare(
+        body=body,
+        input_schema=input_schema,
+        example=example,
+        output_schema=output_schema,
+    )
+    if ext is not None:
+        info = (ext.get("bazaar") or {}).get("info") or {}
+        inp = info.get("input")
+        if isinstance(inp, dict):
+            inp["method"] = "POST"
+        return ext
+    return _envelope(
+        body=body,
+        input_schema=input_schema,
+        example=example,
+        output_schema=output_schema,
+    )
+
+
+def _official_declare(
+    *,
+    body: dict[str, Any],
+    input_schema: dict[str, Any],
+    example: dict[str, Any],
+    output_schema: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Use the SDK helper when the extensions extra is installed."""
+    try:
+        from x402.extensions.bazaar.resource_service import (
+            OutputConfig,
+            declare_discovery_extension,
+        )
+    except Exception:
+        return None
+    return declare_discovery_extension(
+        input=body,
+        input_schema=input_schema,
+        body_type="json",
+        output=OutputConfig(example=example, schema=output_schema),
+    )
+
+
+def _envelope(
+    *,
+    body: dict[str, Any],
+    input_schema: dict[str, Any],
+    example: dict[str, Any],
+    output_schema: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Mirror x402.extensions.bazaar.resource_service body discovery."""
+    schema_properties: dict[str, Any] = {
+        "input": {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string", "const": "http"},
+                "method": {"type": "string", "enum": ["POST", "PUT", "PATCH"]},
+                "bodyType": {
+                    "type": "string",
+                    "enum": ["json", "form-data", "text"],
+                },
+                "body": input_schema,
+            },
+            "required": ["type", "method", "bodyType", "body"],
+            "additionalProperties": False,
+        }
+    }
+    if example is not None:
+        example_field: dict[str, Any] = {"type": "object"}
+        if output_schema:
+            example_field.update(output_schema)
+        schema_properties["output"] = {
+            "type": "object",
+            "properties": {
+                "type": {"type": "string"},
+                "example": example_field,
+            },
+            "required": ["type"],
+        }
+    return {
+        "bazaar": {
+            "info": {
+                "input": {
+                    "type": "http",
+                    "method": "POST",
+                    "bodyType": "json",
+                    "body": body if body else {},
+                },
+                "output": {"type": "json", "example": example},
+            },
+            "schema": {
+                "$schema": "https://json-schema.org/draft/2020-12/schema",
+                "type": "object",
+                "properties": schema_properties,
+                "required": ["input"],
+            },
+        }
+    }
+
+
 def _declare(
     *,
     body: dict[str, Any],
@@ -281,15 +397,12 @@ def _declare(
     example: dict[str, Any],
     output_schema: dict[str, Any],
 ) -> dict[str, Any]:
-    return {
-        "bazaar": {
-            "info": {
-                "input": {"type": "http", "bodyType": "json", "body": body},
-                "output": {"type": "json", "example": example},
-            },
-            "schema": input_schema,
-        }
-    }
+    return declare_http_json_discovery(
+        body=body,
+        input_schema=input_schema,
+        example=example,
+        output_schema=output_schema,
+    )
 
 
 _NOWCAST: dict[str, dict[str, Any]] = {

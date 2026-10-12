@@ -161,11 +161,11 @@ def test_unpaid_probes_do_not_429(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
 
 NOWCAST_BAZAAR_INPUTS = {
     "/v1/nowcast/latest": {},
-    "/v1/nowcast/history": {"hours": 24},
-    "/v1/nowcast/history/extended": {"hours": 168},
+    "/v1/nowcast/history": {"windowHours": 24},
+    "/v1/nowcast/history/extended": {"windowHours": 168},
     "/v1/nowcast/regime": {},
     "/v1/nowcast/spreads": {},
-    "/v1/nowcast/asof": {"asof": "2026-10-09T18:00:00-04:00"},
+    "/v1/nowcast/asof": {"asOf": "2026-10-09T18:00:00-04:00"},
     "/v1/nowcast/snapshots": {
         "from": "2026-10-09T00:00:00-04:00",
         "to": "2026-10-10T00:00:00-04:00",
@@ -212,12 +212,22 @@ def test_unpaid_nowcast_402_has_bazaar_input_and_output(enforcing_client):
     assert card_info["input"]["body"] == {"lookbackDays": 5}
 
 
-def _bazaar_schema(resp) -> dict:
+def _bazaar(resp) -> dict:
     challenge = _challenge(resp)
-    schema = (challenge.get("extensions") or {}).get("bazaar", {}).get("schema")
-    assert isinstance(schema, dict), challenge
-    assert "properties" in schema
-    return schema
+    bazaar = (challenge.get("extensions") or {}).get("bazaar")
+    assert isinstance(bazaar, dict) and bazaar, challenge
+    return bazaar
+
+
+def _body_schema(resp) -> dict:
+    """Request-body JSON Schema nested under the PayAI info envelope."""
+    schema = _bazaar(resp).get("schema") or {}
+    body = (
+        ((schema.get("properties") or {}).get("input") or {}).get("properties") or {}
+    ).get("body")
+    assert isinstance(body, dict), schema
+    assert "properties" in body, body
+    return body
 
 
 def test_unpaid_402_bazaar_has_input_schema(enforcing_client):
@@ -231,38 +241,81 @@ def test_unpaid_402_bazaar_has_input_schema(enforcing_client):
     for path in empty_paths:
         r = enforcing_client.post(path, json={})
         assert r.status_code == 402, path
-        schema = _bazaar_schema(r)
+        schema = _body_schema(r)
         assert schema.get("type") == "object"
         assert isinstance(schema["properties"], dict)
         assert schema.get("required") in (None, [])
 
     asof = enforcing_client.post("/v1/nowcast/asof", json={})
     assert asof.status_code == 402
-    asof_schema = _bazaar_schema(asof)
-    assert asof_schema["required"] == ["asof"]
-    assert asof_schema["properties"]["asof"]["type"] == "string"
+    asof_schema = _body_schema(asof)
+    assert asof_schema["required"] == ["asOf"]
+    assert asof_schema["properties"]["asOf"]["type"] == "string"
 
     snaps = enforcing_client.post("/v1/nowcast/snapshots", json={})
     assert snaps.status_code == 402
-    snap_schema = _bazaar_schema(snaps)
+    snap_schema = _body_schema(snaps)
     assert snap_schema["required"] == ["from", "to"]
     assert snap_schema["properties"]["from"]["type"] == "string"
     assert snap_schema["properties"]["to"]["type"] == "string"
 
     card = enforcing_client.post(SPREAD_CARD_PATH, json={})
     assert card.status_code == 402
-    card_schema = _bazaar_schema(card)
+    card_schema = _body_schema(card)
     assert card_schema["required"] == ["lookbackDays"]
     assert card_schema["properties"]["lookbackDays"]["type"] == "integer"
 
     history = enforcing_client.post("/v1/nowcast/history", json={})
     assert history.status_code == 402
-    hist_schema = _bazaar_schema(history)
+    hist_schema = _body_schema(history)
     assert hist_schema["properties"]["windowHours"]["type"] == "integer"
     assert hist_schema.get("required") in (None, [])
 
     extended = enforcing_client.post("/v1/nowcast/history/extended", json={})
     assert extended.status_code == 402
-    ext_schema = _bazaar_schema(extended)
+    ext_schema = _body_schema(extended)
     assert ext_schema["properties"]["windowHours"]["type"] == "integer"
     assert ext_schema.get("required") in (None, [])
+
+
+def test_every_paid_route_402_has_payai_bazaar(enforcing_client):
+    from pjm_nowcast.payments.routes import (
+        PAID_DESCRIPTIONS,
+        PAID_ROUTES,
+        PAID_TAGS,
+        SERVICE_NAME,
+    )
+
+    for path in PAID_ROUTES:
+        r = enforcing_client.post(path, json={})
+        assert r.status_code == 402, path
+        json_body = r.json()
+        header = _challenge(r)
+        for blob, label in ((json_body, "json"), (header, "header")):
+            bazaar = (blob.get("extensions") or {}).get("bazaar")
+            assert isinstance(bazaar, dict) and bazaar, (path, label)
+            info = bazaar.get("info") or {}
+            inp = info.get("input") or {}
+            assert inp.get("type") == "http", (path, label)
+            assert inp.get("method") == "POST", (path, label)
+            assert inp.get("bodyType") == "json", (path, label)
+            assert isinstance(inp.get("body"), dict), (path, label)
+            example = (info.get("output") or {}).get("example")
+            assert example, (path, label)
+            schema = bazaar.get("schema") or {}
+            input_schema = (schema.get("properties") or {}).get("input") or {}
+            assert input_schema.get("properties"), (path, label)
+            assert "body" in (input_schema.get("properties") or {}), (path, label)
+            resource = blob.get("resource") or {}
+            assert resource.get("description") == PAID_DESCRIPTIONS[path], (path, label)
+            assert resource.get("serviceName") == SERVICE_NAME, (path, label)
+            assert resource.get("mimeType") == "application/json", (path, label)
+            tags = resource.get("tags")
+            assert tags == PAID_TAGS[path], (path, label)
+            assert 1 <= len(tags) <= 5, (path, label)
+            for tag in tags:
+                assert isinstance(tag, str) and tag.isascii() and 1 <= len(tag) <= 32
+            icon = resource.get("iconUrl") or ""
+            assert icon.startswith("http://") or icon.startswith("https://"), (path, label)
+        assert "payTo" not in r.text, path
+        assert any(a.get("payTo") for a in header.get("accepts") or []), path

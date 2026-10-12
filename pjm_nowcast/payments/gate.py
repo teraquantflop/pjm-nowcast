@@ -28,14 +28,18 @@ from pjm_nowcast.payments.routes import (
     BASE_USDC_EIP712_EXTRA,
     CHALLENGE_TIMEOUT_SECONDS,
     FREE_TIER_ELIGIBLE,
+    MIME_JSON,
     PAID_DESCRIPTIONS,
     PAID_ROUTES,
+    PAID_TAGS,
     POLYGON_NETWORK,
     POLYGON_USDC_ADDRESS,
     POLYGON_USDC_EIP712_EXTRA,
+    SERVICE_NAME,
     SOLANA_NETWORK,
     match_paid_path,
     price_for,
+    resource_icon_url,
     resource_object,
     resource_url,
     usdc_atomic_amount,
@@ -238,11 +242,12 @@ def _try_wrap_x402(app: ASGIApp, settings: Settings) -> ASGIApp | None:
                 extra["extensions"] = bazaar
             routes[f"POST {path}"] = RouteConfig(
                 accepts=accepts,
-                mime_type="application/json",
+                mime_type=MIME_JSON,
                 description=desc,
-                service_name="pjm-nowcast",
-                tags=["pjm", "lmp", "load", "spread", "electricity"],
+                service_name=SERVICE_NAME,
+                tags=list(PAID_TAGS.get(path) or []),
                 resource=resource_url(settings, path),
+                icon_url=resource_icon_url(settings),
                 **extra,
             )
         if not routes:
@@ -371,6 +376,7 @@ def _free_tier_allows(store: Store, settings: Settings, path: str, ip: str) -> b
 async def _send_402(send: Send, settings: Settings, path: str) -> None:
     payload = payment_required_payload(settings, path)
     encoded = base64.b64encode(json.dumps(payload).encode("utf-8")).decode("ascii")
+    # Header carries accepts/payTo. JSON body carries discovery only — no wallets.
     body = {
         "error": "payment_required",
         "message": (
@@ -378,7 +384,11 @@ async def _send_402(send: Send, settings: Settings, path: str) -> None:
         ),
         "path": path,
         "method": "POST",
+        "x402Version": 2,
+        "resource": payload.get("resource"),
     }
+    if payload.get("extensions"):
+        body["extensions"] = payload["extensions"]
     raw = json.dumps(body).encode("utf-8")
     log.info("402 path=%s", path)
     await send(

@@ -120,12 +120,12 @@ _INLINE_REQUEST_BODIES: dict[str, dict[str, Any]] = {
     "/v1/nowcast/asof": {
         "type": "object",
         "properties": {
-            "asof": {
+            "asOf": {
                 "type": "string",
                 "description": "ISO-8601 observation clock. Required. No interpolation.",
             }
         },
-        "required": ["asof"],
+        "required": ["asOf"],
     },
     "/v1/nowcast/snapshots": {
         "type": "object",

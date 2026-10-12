@@ -108,8 +108,8 @@ def test_x402scan_paths_inline_request_bodies(client):
 
     asof = _request_schema(spec, "/v1/nowcast/asof")
     assert "$ref" not in asof
-    assert asof["required"] == ["asof"]
-    assert asof["properties"]["asof"]["type"] == "string"
+    assert asof["required"] == ["asOf"]
+    assert asof["properties"]["asOf"]["type"] == "string"
 
     snaps = _request_schema(spec, "/v1/nowcast/snapshots")
     assert "$ref" not in snaps

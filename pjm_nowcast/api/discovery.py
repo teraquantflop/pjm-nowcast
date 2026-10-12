@@ -10,6 +10,8 @@ from pjm_nowcast import DISCLAIMER, __version__
 from pjm_nowcast.payments.routes import (
     PAID_DESCRIPTIONS,
     PAID_ROUTES,
+    PAID_TAGS,
+    SERVICE_NAME,
     payment_configured,
     price_for,
     public_network_names,
@@ -880,7 +882,11 @@ def x402_resources(settings: Settings) -> dict[str, Any]:
             "networks": public_network_names(settings),
             "description": PAID_DESCRIPTIONS.get(path, ""),
             "inputSchema": schemas.get(path, {}),
+            "serviceName": SERVICE_NAME,
         }
+        tags = PAID_TAGS.get(path)
+        if tags:
+            item["tags"] = list(tags)
         if path == SPREAD_CARD_PATH:
             item["whenToUse"] = SPREAD_CARD_WHEN_TO_USE
             item["whenNotToUse"] = SPREAD_CARD_WHEN_NOT_TO_USE
